@@ -11,7 +11,7 @@ Utiliza la API de Google Gemini para procesar nativamente cientos de PDFs y extr
 | Característica | Descripción |
 |----------------|-------------|
 | 🤖 **Extracción LLM-first** | Gemini 2.0 Flash procesa PDFs completos sin OCR ni regex |
-| 📋 **Variables dinámicas** | Definidas en un Excel editable (`variables-sea.xlsx`) |
+| 📋 **Variables dinámicas** | Definidas en un Excel editable (`seia-variables.xlsx`) |
 | 🔄 **Checkpoint & Resume** | Reanuda ejecuciones interrumpidas automáticamente |
 | ⚡ **Concurrencia** | Procesa múltiples PDFs en paralelo (`ThreadPoolExecutor`) |
 | 🛡️ **Validación de PDFs** | Detecta corruptos, cifrados y formatos incorrectos |
@@ -68,22 +68,22 @@ python tools/check_pdfs.py data/raw/ --deep --hash --strict
 
 ```bash
 # Prueba con 5 PDFs
-python main.py --pdf-folder data/raw --output data/processed/resultados.xlsx --workers 1
+python main.py --pdf-folder data/raw --output data/processed/rca_results.xlsx --workers 1
 
 # Lote completo
-python main.py --pdf-folder data/raw --output data/processed/resultados.xlsx --workers 2
+python main.py --pdf-folder data/raw --output data/processed/rca_results.xlsx --workers 2
 
 # Reanudar ejecución interrumpida
-python main.py --pdf-folder data/raw --output data/processed/resultados.xlsx
+python main.py --pdf-folder data/raw --output data/processed/rca_results.xlsx
 
 # Reprocesar todo (ignorar checkpoint)
-python main.py --pdf-folder data/raw --output data/processed/resultados.xlsx --reset
+python main.py --pdf-folder data/raw --output data/processed/rca_results.xlsx --reset
 ```
 
 ### 3. Post-procesar resultados
 
 ```bash
-python -m post_processing --input data/processed/resultados.xlsx
+python -m post_processing --input data/processed/rca_results.xlsx
 ```
 
 ### 4. Levantar dashboard
@@ -105,8 +105,8 @@ python main.py [opciones]
 
 Opciones:
   --pdf-folder   Carpeta con PDFs de RCA          (default: rcas/)
-  --variables    Excel con variables a extraer     (default: variables-sea.xlsx)
-  --output       Archivo Excel de salida           (default: resultados.xlsx)
+  --variables    Excel con variables a extraer     (default: seia-variables.xlsx)
+  --output       Archivo Excel de salida           (default: rca_results.xlsx)
   --workers      Nº de PDFs en paralelo            (default: 2)
   --model        Modelo Gemini                     (default: gemini-2.0-flash)
   --reset        Ignorar checkpoint, reprocesar todo
@@ -163,7 +163,7 @@ rca_extractor/
 │   └── processed/           # Resultados
 │
 ├── tests/
-├── variables-sea.xlsx       # Schema de variables
+├── seia-variables.xlsx       # Schema de variables
 ├── requirements.txt
 └── .env.example
 ```
@@ -186,7 +186,7 @@ rca_extractor/
 
 ## Variables Extraídas
 
-El sistema extrae ~15 variables por RCA, configurables en `variables-sea.xlsx`:
+El sistema extrae ~15 variables por RCA, configurables en `seia-variables.xlsx`:
 
 | Variable | Tipo | Ejemplo |
 |----------|------|---------|
