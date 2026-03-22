@@ -238,7 +238,7 @@ Ver [GITHUB_PROJECTS.md](GITHUB_PROJECTS.md) para el detalle de EPICs, Tasks y c
 
 ## Licencia
 
-MIT
+GPL-3.0
 
 ---
 
