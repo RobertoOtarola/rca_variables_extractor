@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Entorno
+.env
+*.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Data (PDFs pesados, no versionados)
+data/raw/*.pdf
+data/processed/*.xlsx
+data/processed/*.db
+*.csv
+*.ods
+
+# Checkpoints y logs
+checkpoints/
+logs/
+*.log
+*_checkpoint.json
+gemini_file_cache.json
+
+# Otros
+*.zip
+media/
+
+# Notas de desarrollo
+NOTES.md
+GITHUB_PROJECTS.md
