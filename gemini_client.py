@@ -104,8 +104,8 @@ class GeminiClient:
                     # Backoff exponencial con piso de _QUOTA_MIN_WAIT
                     wait = min(_QUOTA_MIN_WAIT * (2 ** attempt), _QUOTA_MAX_WAIT)
                 else:
-                    # Otros errores: backoff suave (2, 4, 8, 16 … s)
-                    wait = base_delay * (2 ** attempt)
+                    # Otros errores: backoff suave (2, 4, 8, 16 … s) — máx 60 s
+                    wait = min(2.0 * (2 ** attempt), 60.0)
 
                 # Si la API indica un tiempo concreto, respetarlo (+ 2 s de margen)
                 match = re.search(r"Please retry in (\d+(?:\.\d+)?)s", exc_str)

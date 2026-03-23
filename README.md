@@ -1,12 +1,12 @@
-# 🔬 RCA Extractor
+# 🔍☑️ RCA Extractor
 
 **Extractor automático de variables técnicas y ambientales desde Resoluciones de Calificación Ambiental (RCA) del Sistema de Evaluación de Impacto Ambiental (SEIA) de Chile.**
 
-Utiliza la API de Google Gemini para procesar nativamente cientos de PDFs y extraer datos estructurados en JSON, con post-procesamiento, validación científica, análisis geoespacial y dashboard interactivo.
+Utiliza la API de Google Gemini para procesar nativamente PDFs completos y extraer datos estructurados en JSON.
 
 ---
 
-## Características
+## Características (implementadas)
 
 | Característica | Descripción |
 |----------------|-------------|
@@ -15,6 +15,11 @@ Utiliza la API de Google Gemini para procesar nativamente cientos de PDFs y extr
 | 🔄 **Checkpoint & Resume** | Reanuda ejecuciones interrumpidas automáticamente |
 | ⚡ **Concurrencia** | Procesa múltiples PDFs en paralelo (`ThreadPoolExecutor`) |
 | 🛡️ **Validación de PDFs** | Detecta corruptos, cifrados y formatos incorrectos |
+
+### Planificado (aún no implementado)
+
+| Característica | Descripción |
+|----------------|-------------|
 | 📊 **Post-procesamiento** | Normalización de unidades, validación de rangos, detección de outliers |
 | 🗄️ **Persistencia** | SQLite (local) o PostgreSQL + PostGIS (producción) |
 | 🌍 **Geoespacial** | Coordenadas UTM → geometrías, intersección con áreas protegidas |
@@ -27,7 +32,6 @@ Utiliza la API de Google Gemini para procesar nativamente cientos de PDFs y extr
 
 - **Python** 3.11+
 - **API Key de Gemini** → [Google AI Studio](https://aistudio.google.com/)
-- **Tesseract OCR** (solo para PDFs escaneados sin texto nativo)
 
 ---
 
@@ -82,20 +86,11 @@ python main.py --pdf-folder data/raw --output data/processed/rca_results.xlsx
 python main.py --pdf-folder data/raw --output data/processed/rca_results.xlsx --reset
 ```
 
-### 3. Post-procesar resultados
+### 3. Ejecutar tests
 
 ```bash
-python -m post_processing --input data/processed/rca_results.xlsx
-```
-
-### 4. Levantar dashboard
-
-```bash
-# API
-uvicorn api.main:app --reload --port 8000
-
-# Dashboard
-streamlit run dashboard/app.py
+pip install pytest
+python -m pytest tests/ -v
 ```
 
 ---
@@ -121,52 +116,41 @@ Opciones:
 ## Estructura del Proyecto
 
 ```
-rca_extractor/
+rca_variables_extractor/
 ├── main.py                  # CLI principal
-├── config.py                # Configuración centralizada
-├── gemini_client.py         # Cliente Gemini API
-├── pdf_pipeline.py          # Pipeline de extracción
-├── prompt_builder.py        # Construcción de prompts
-├── output_validator.py      # Validación de JSON
-├── checkpoint.py            # Checkpoint/resume
-├── logger.py                # Logging (Rich)
-│
-├── tools/
-│   └── check_pdfs.py        # Validación de PDFs
-│
-├── post_processing/
-│   ├── normalizer.py        # Strings → valores tipados
-│   ├── validator.py         # Rangos y outliers
-│   └── db_storage.py        # SQLAlchemy → SQLite/PostgreSQL
-│
-├── geo/
-│   ├── coord_parser.py      # UTM → Shapely geometries
-│   └── spatial_analysis.py  # Intersección áreas protegidas
-│
-├── lca/
-│   ├── factors.py           # Factores IPCC/NREL/IEA
-│   ├── calculator.py        # Cálculo de intensidades
-│   └── benchmarks.py        # Benchmark internacional
-│
-├── api/
-│   ├── main.py              # FastAPI
-│   └── routes.py            # Endpoints REST
-│
-├── dashboard/
-│   ├── app.py               # Streamlit
-│   └── components/
-│       ├── maps.py          # Mapa de proyectos
-│       └── charts.py        # Gráficos
+├── config.py                # Configuración centralizada (.env)
+├── gemini_client.py         # Cliente Gemini API con backoff
+├── pdf_pipeline.py          # Pipeline de extracción por PDF
+├── prompt_builder.py        # Construcción de prompts dinámicos
+├── output_validator.py      # Validación y normalización de JSON
+├── checkpoint.py            # Checkpoint/resume entre ejecuciones
+├── logger.py                # Logging rotativo (consola + archivo)
 │
 ├── prompts/
-│   └── prompt_extraccion.md # Prompt editable
+│   └── extraction_prompt.md # Prompt editable (rol + reglas + formato)
 │
-├── data/
-│   ├── raw/                 # PDFs originales
-│   └── processed/           # Resultados
+├── tools/
+│   ├── check_pdfs.py        # Validación masiva de PDFs
+│   ├── check_gitignore.py   # Verificar archivos trackeados vs .gitignore
+│   ├── list_models.py       # Listar modelos Gemini disponibles
+│   └── snippet_api_key.py   # Test rápido de conexión API
 │
 ├── tests/
-├── seia-variables.xlsx       # Schema de variables
+│   ├── conftest.py          # Configuración pytest
+│   ├── test_prompt_builder.py
+│   ├── test_output_validator.py
+│   └── test_checkpoint.py
+│
+├── post_processing/         # 🚧 Planificado
+├── geo/                     # 🚧 Planificado
+├── lca/                     # 🚧 Planificado
+├── api/                     # 🚧 Planificado
+├── dashboard/               # 🚧 Planificado
+│
+├── data/
+│   └── raw/                 # PDFs originales (no versionados)
+│
+├── seia-variables.xlsx      # Schema de variables a extraer
 ├── requirements.txt
 └── .env.example
 ```
@@ -179,11 +163,8 @@ rca_extractor/
 |------|-----------|
 | Extracción | Gemini 2.0 Flash + File API |
 | Validación PDFs | pypdf |
-| Post-proceso | Pandas, Pydantic, SQLAlchemy |
-| Geoespacial | GeoPandas, Shapely, pyproj |
-| API | FastAPI + Uvicorn |
-| Dashboard | Streamlit + Plotly |
-| ACV | Factores IPCC/NREL/IEA |
+| Datos | Pandas + openpyxl |
+| Configuración | python-dotenv |
 
 ---
 
@@ -200,14 +181,12 @@ El sistema extrae ~15 variables por RCA, configurables en `seia-variables.xlsx`:
 | Coordenadas UTM | string | `E 543.023, N 7.346.950` |
 | Emisiones MP10 | float | `72.6 t/año` |
 | Consumo de agua | float | `0.02 m³/MWh` |
-| Uso de suelo | float (derivado) | `1.41 ha/MW` |
-| Intensidad GEI | float (ACV) | `0.040 kg CO₂-eq/kWh` |
 
 ---
 
 ## Prompt de Extracción
 
-El prompt es editable sin modificar código — vive en `prompts/prompt_extraccion.md`.
+El prompt es editable sin modificar código — vive en `prompts/extraction_prompt.md`.
 
 **Reglas clave:**
 - Valor explícito → texto exacto + unidad
@@ -247,5 +226,5 @@ GPL-3.0
 
 ## Documentación
 
-- [NOTES.md](../NOTES.md) — Arquitectura unificada y comandos paso a paso
-- [GITHUB_PROJECTS.md](../GITHUB_PROJECTS.md) — EPICs, Tasks y Git workflow
+- [NOTES.md](NOTES.md) — Arquitectura unificada y comandos paso a paso
+- [GITHUB_PROJECTS.md](GITHUB_PROJECTS.md) — EPICs, Tasks y Git workflow

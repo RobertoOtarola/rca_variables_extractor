@@ -2,7 +2,7 @@
 prompt_builder.py — Construye el prompt final que se envía a Gemini.
 
 Estrategia:
-  1. Carga el system prompt base desde prompts/zero_shot_prompt.md.
+  1. Carga el system prompt base desde prompts/extraction_prompt.md.
   2. Normaliza cada variable a una clave snake_case para asegurar
      que el JSON de salida sea predecible y fácil de procesar.
   3. Inyecta las variables + su clave esperada en el prompt.
