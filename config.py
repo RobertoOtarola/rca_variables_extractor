@@ -19,9 +19,9 @@ if not GEMINI_API_KEY:
     )
 
 # ── Modelo ───────────────────────────────────────────────────────────────────
-DEFAULT_MODEL: str = "gemini-2.0-flash"
+DEFAULT_MODEL: str = "gemini-2.5-flash"
 GEMINI_MODEL: str  = os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
-TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0"))
+TEMPERATURE: float      = float(os.getenv("TEMPERATURE", "0"))
 MAX_RETRIES: int        = int(os.getenv("MAX_RETRIES", "8"))
 RETRY_BASE_DELAY: float = float(os.getenv("RETRY_BASE_DELAY", "65.0"))  # segundos — piso para 429 free tier
 INTER_PDF_COOLDOWN: int = int(os.getenv("INTER_PDF_COOLDOWN", "15"))    # segundos entre PDFs

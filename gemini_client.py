@@ -83,9 +83,13 @@ class GeminiClient:
 
         for attempt in range(retries):
             try:
+                pdf_part = types.Part.from_uri(
+                    file_uri=file_ref.uri,
+                    mime_type="application/pdf",
+                )
                 response = self.client.models.generate_content(
                     model=self.model_name,
-                    contents=[file_ref, prompt],
+                    contents=[pdf_part, prompt],
                     config=gen_config,
                 )
                 try:
@@ -104,8 +108,8 @@ class GeminiClient:
                     # Backoff exponencial con piso de _QUOTA_MIN_WAIT
                     wait = min(_QUOTA_MIN_WAIT * (2 ** attempt), _QUOTA_MAX_WAIT)
                 else:
-                    # Otros errores: backoff suave (2, 4, 8, 16 … s) — máx 60 s
-                    wait = min(2.0 * (2 ** attempt), 60.0)
+                    # Otros errores: backoff suave (2, 4, 8, 16 … s)
+                    wait = base_delay * (2 ** attempt)
 
                 # Si la API indica un tiempo concreto, respetarlo (+ 2 s de margen)
                 match = re.search(r"Please retry in (\d+(?:\.\d+)?)s", exc_str)
