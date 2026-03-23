@@ -3,12 +3,24 @@ gemini_client.py — Cliente Gemini con backoff exponencial y limpieza garantiza
 Actualizado para usar SDK google-genai.
 """
 
+import re
 import time
+import random
 import logging
 from google import genai
 from google.genai import types
 
 log = logging.getLogger("rca_extractor")
+
+# Tiempo mínimo de espera cuando la API responde con 429 / RESOURCE_EXHAUSTED.
+# gemini-2.0-flash free tier tiene límite de ~15 RPM → ventana de 60 s.
+_QUOTA_MIN_WAIT = 65.0   # segundos
+_QUOTA_MAX_WAIT = 600.0  # techo: 10 minutos
+
+
+def _is_quota_error(exc_str: str) -> bool:
+    """Devuelve True si el error es un 429 o RESOURCE_EXHAUSTED."""
+    return "429" in exc_str or "RESOURCE_EXHAUSTED" in exc_str
 
 
 class GeminiClient:
@@ -53,9 +65,15 @@ class GeminiClient:
 
     # ── Generación ────────────────────────────────────────────────────────────
 
-    def generate(self, prompt: str, file_ref, retries: int = 4, base_delay: float = 2.0) -> str:
+    def generate(self, prompt: str, file_ref, retries: int = 8, base_delay: float = 65.0) -> str:
         """
-        Envía el prompt + archivo a Gemini con backoff exponencial.
+        Envía el prompt + archivo a Gemini con backoff exponencial consciente de cuotas.
+
+        Para errores 429 / RESOURCE_EXHAUSTED la espera mínima es _QUOTA_MIN_WAIT (65 s)
+        porque el free tier de gemini-2.0-flash tiene un límite de ~15 RPM.
+        Si la API incluye "Please retry in Xs" se respeta ese valor cuando supera
+        el mínimo calculado.
+
         Devuelve el texto de la respuesta o '{}' ante bloqueo de seguridad.
         """
         gen_config = types.GenerateContentConfig(
@@ -79,9 +97,33 @@ class GeminiClient:
                     return "{}"
 
             except Exception as exc:
-                wait = base_delay * (2 ** attempt)
-                log.warning("Intento %d/%d fallido: %s. Reintentando en %.1fs…",
-                             attempt + 1, retries, exc, wait)
+                exc_str = str(exc)
+
+                # ── Calcular tiempo de espera ──────────────────────────────
+                if _is_quota_error(exc_str):
+                    # Backoff exponencial con piso de _QUOTA_MIN_WAIT
+                    wait = min(_QUOTA_MIN_WAIT * (2 ** attempt), _QUOTA_MAX_WAIT)
+                else:
+                    # Otros errores: backoff suave (2, 4, 8, 16 … s)
+                    wait = base_delay * (2 ** attempt)
+
+                # Si la API indica un tiempo concreto, respetarlo (+ 2 s de margen)
+                match = re.search(r"Please retry in (\d+(?:\.\d+)?)s", exc_str)
+                if match:
+                    api_wait = float(match.group(1)) + 2.0
+                    wait = max(wait, api_wait)
+
+                # Jitter ±10 % para evitar thundering herd con múltiples workers
+                wait += random.uniform(-wait * 0.10, wait * 0.10)
+                wait = max(1.0, wait)  # nunca menos de 1 s
+
+                # ── Log limpio (sin el bloque JSON gigante del error) ──────
+                short_err = exc_str.split(" {'error':")[0] if " {'error':" in exc_str else exc_str.split("\n")[0]
+
+                log.warning(
+                    "Intento %d/%d fallido: %s. Reintentando en %.1fs…",
+                    attempt + 1, retries, short_err, wait,
+                )
                 if attempt < retries - 1:
                     time.sleep(wait)
 

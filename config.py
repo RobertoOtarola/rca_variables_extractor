@@ -22,7 +22,7 @@ if not GEMINI_API_KEY:
 DEFAULT_MODEL: str = "gemini-2.0-flash"
 GEMINI_MODEL: str  = os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
 TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0"))
-MAX_RETRIES: int   = int(os.getenv("MAX_RETRIES", "4"))
+MAX_RETRIES: int   = int(os.getenv("MAX_RETRIES", "8"))
 RETRY_BASE_DELAY: float = float(os.getenv("RETRY_BASE_DELAY", "2.0"))   # segundos
 
 # ── Rutas ────────────────────────────────────────────────────────────────────

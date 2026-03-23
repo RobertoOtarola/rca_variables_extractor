@@ -5,7 +5,7 @@ Uso básico:
     python main.py
 
 Opciones avanzadas:
-    python main.py --pdf-folder rcas/ --output rca_results.xlsx --workers 2 --reset
+    python main.py --pdf-folder data/raw/ --output rca_results.xlsx --workers 2 --reset
 """
 
 import argparse
@@ -45,6 +45,9 @@ def parse_args() -> argparse.Namespace:
                    help="Nº de PDFs en paralelo (default: %(default)s)")
     p.add_argument("--model",        default=config.GEMINI_MODEL,
                    help="Modelo Gemini (default: %(default)s)")
+    p.add_argument("--cooldown",     type=int, default=15,
+                   help="Segundos de pausa entre PDFs consecutivos (default: %(default)s). "
+                        "Aumentar a 60+ si hay 429s frecuentes en free tier.")
     p.add_argument("--reset",        action="store_true",
                    help="Ignora el checkpoint y reprocesa todos los PDFs")
     p.add_argument("--dry-run",      action="store_true",
@@ -133,7 +136,7 @@ def main() -> int:
 
     if args.workers == 1:
         # Modo secuencial
-        for pdf in pending:
+        for idx, pdf in enumerate(pending):
             name, data, err = _process_one(extractor, pdf, variables)
             if data:
                 results.append(data)
@@ -144,6 +147,12 @@ def main() -> int:
                 log.error("❌ %s: %s", name, err)
                 checkpoint.mark_error(name, err or "desconocido")
                 stats["error"] += 1
+
+            # Pausa entre PDFs para respetar el rate limit de Gemini.
+            # No se aplica después del último PDF.
+            if args.cooldown > 0 and idx < len(pending) - 1:
+                log.info("Cooldown de %ds antes del siguiente PDF…", args.cooldown)
+                time.sleep(args.cooldown)
     else:
         # Modo concurrente
         log.info("Procesando con %d workers en paralelo.", args.workers)
