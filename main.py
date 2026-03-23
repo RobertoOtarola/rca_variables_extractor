@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
                    help="Archivo de checkpoint (default: %(default)s)")
     p.add_argument("--workers",      type=int, default=config.MAX_WORKERS,
                    help="Nº de PDFs en paralelo (default: %(default)s)")
-    p.add_argument("--model",        default=config.MODEL_NAME,
+    p.add_argument("--model",        default=config.GEMINI_MODEL,
                    help="Modelo Gemini (default: %(default)s)")
     p.add_argument("--reset",        action="store_true",
                    help="Ignora el checkpoint y reprocesa todos los PDFs")

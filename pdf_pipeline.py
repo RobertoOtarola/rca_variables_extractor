@@ -30,7 +30,7 @@ class RCAExtractor:
     ):
         self.client = GeminiClient(
             api_key=config.GEMINI_API_KEY,
-            model=model or config.MODEL_NAME,
+            model=model or config.GEMINI_MODEL,
             temperature=temperature if temperature is not None else config.TEMPERATURE,
         )
         self.max_retries = max_retries or config.MAX_RETRIES

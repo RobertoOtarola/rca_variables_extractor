@@ -55,7 +55,7 @@ logging.getLogger("pypdf").setLevel(logging.ERROR)
 # CONSTANTES Y CONFIGURACIÓN
 # ─────────────────────────────────────────────
 DEFAULT_WORKERS = 6
-DEFAULT_OUTPUT = "reporte_pdfs.csv"
+DEFAULT_OUTPUT = "pdfs_report.csv"
 DEFAULT_SCAN_FOLDER = (
     "/Users/roberto/Documents/1 Projects/CEDEUS UC/Databases/PDFs_RCAs"
 )

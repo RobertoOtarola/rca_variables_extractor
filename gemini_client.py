@@ -1,37 +1,37 @@
 """
 gemini_client.py — Cliente Gemini con backoff exponencial y limpieza garantizada.
+Actualizado para usar SDK google-genai.
 """
 
 import time
 import logging
-import google.generativeai as genai
-from google.generativeai import types as genai_types
+from google import genai
+from google.genai import types
 
 log = logging.getLogger("rca_extractor")
 
 
 class GeminiClient:
     def __init__(self, api_key: str, model: str, temperature: float = 0):
-        genai.configure(api_key=api_key)
+        self.client = genai.Client(api_key=api_key)
         self.model_name = model
         self.temperature = temperature
-        self._model = genai.GenerativeModel(model)
         log.debug("GeminiClient inicializado con modelo: %s", model)
 
     # ── File management ───────────────────────────────────────────────────────
 
-    def upload_pdf(self, path: str) -> genai_types.File:
+    def upload_pdf(self, path: str) -> types.File:
         """
         Sube el PDF a la Files API de Gemini y espera a que esté ACTIVE.
         El polling evita enviar la request de generación antes de que el
         archivo esté listo (error 'File is not ready').
         """
         log.debug("Subiendo archivo: %s", path)
-        file_ref = genai.upload_file(path, mime_type="application/pdf")
+        file_ref = self.client.files.upload(file=path, config={"mime_type": "application/pdf"})
 
         # Polling hasta que el archivo esté activo (máx. 60 s)
         for _ in range(20):
-            file_ref = genai.get_file(file_ref.name)
+            file_ref = self.client.files.get(name=file_ref.name)
             if file_ref.state.name == "ACTIVE":
                 break
             if file_ref.state.name == "FAILED":
@@ -46,7 +46,7 @@ class GeminiClient:
     def delete_file(self, file_ref) -> None:
         """Elimina el archivo de la Files API. Falla silenciosamente."""
         try:
-            genai.delete_file(file_ref.name)
+            self.client.files.delete(name=file_ref.name)
             log.debug("Archivo eliminado: %s", file_ref.name)
         except Exception as exc:
             log.warning("No se pudo eliminar %s: %s", file_ref.name, exc)
@@ -58,16 +58,17 @@ class GeminiClient:
         Envía el prompt + archivo a Gemini con backoff exponencial.
         Devuelve el texto de la respuesta o '{}' ante bloqueo de seguridad.
         """
-        gen_config = genai.GenerationConfig(
+        gen_config = types.GenerateContentConfig(
             temperature=self.temperature,
             response_mime_type="text/plain",
         )
 
         for attempt in range(retries):
             try:
-                response = self._model.generate_content(
-                    [file_ref, prompt],
-                    generation_config=gen_config,
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=[file_ref, prompt],
+                    config=gen_config,
                 )
                 try:
                     text = response.text

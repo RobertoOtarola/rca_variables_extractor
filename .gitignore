@@ -17,6 +17,12 @@ venv/
 *.swp
 *.swo
 .DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
 
 # Data (PDFs pesados, no versionados)
 data/raw/*.pdf
@@ -24,6 +30,10 @@ data/processed/*.xlsx
 data/processed/*.db
 *.csv
 *.ods
+
+# SQLite
+db.sqlite3
+db.sqlite3-journal
 
 # Checkpoints y logs
 checkpoints/
@@ -36,7 +46,12 @@ gemini_file_cache.json
 *.zip
 media/
 
+# Distribución/Instalación
+pip-log.txt
+pip-delete-this-directory.txt
+share/python-wheels/
+
 # Notas de desarrollo
 NOTES.md
 GITHUB_PROJECTS.md
-implementation_plan.md
+implementation_plan*.md
