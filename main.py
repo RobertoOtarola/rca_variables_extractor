@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
                    help="Nº de PDFs en paralelo (default: %(default)s)")
     p.add_argument("--model",        default=config.GEMINI_MODEL,
                    help="Modelo Gemini (default: %(default)s)")
-    p.add_argument("--cooldown",     type=int, default=config.INTER_PDF_COOLDOWN,
+    p.add_argument("--cooldown",     type=int, default=15,
                    help="Segundos de pausa entre PDFs consecutivos (default: %(default)s). "
                         "Aumentar a 60+ si hay 429s frecuentes en free tier.")
     p.add_argument("--reset",        action="store_true",
@@ -112,11 +112,15 @@ def main() -> int:
             print(f"  • {p.name}")
         return 0
 
-    # 4. Cargar resultados previos si existen
+    # 4. Cargar resultados previos si existen, excluyendo PDFs que se van a reprocesar
     existing_results: list[dict] = []
     if output_file.exists() and not args.reset:
         try:
-            existing_results = pd.read_excel(output_file).to_dict("records")
+            pending_names = {p.name for p in pending}
+            existing_results = [
+                r for r in pd.read_excel(output_file).to_dict("records")
+                if r.get("archivo") not in pending_names
+            ]
             log.info("Resultados previos cargados: %d filas", len(existing_results))
         except Exception as exc:
             log.warning("No se pudo leer el archivo de salida existente: %s", exc)
