@@ -28,6 +28,7 @@ Icon
 data/raw/*.pdf
 data/processed/*.xlsx
 data/processed/*.db
+data/raw_backup/
 *.csv
 *.ods
 
@@ -55,7 +56,5 @@ share/python-wheels/
 NOTES.md
 GITHUB_PROJECTS.md
 implementation_plan*.md
-task*.md
-walkthrough*.md
-\n# Resultados de extracción\ndata/
-\n# Resultados de extracción\ndata/processed/
+task_*.md
+walkthrough_*.md
