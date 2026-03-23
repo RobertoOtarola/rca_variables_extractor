@@ -3,14 +3,20 @@ output_validator.py — Valida y normaliza el JSON devuelto por Gemini.
 
 Responsabilidades:
   1. Extraer el bloque JSON del texto crudo (resiste markdown, texto extra).
-  2. Parsear el JSON de forma segura.
+  2. Parsear el JSON de forma segura, con reparacion via json-repair.
   3. Rellenar con "N/A" las claves esperadas que falten.
-  4. Advertir sobre claves inesperadas (posible alucinación de clave).
+  4. Advertir sobre claves inesperadas (posible alucinacion de clave).
 """
 
 import json
 import re
 import logging
+
+try:
+    from json_repair import repair_json
+    _HAS_JSON_REPAIR = True
+except ImportError:
+    _HAS_JSON_REPAIR = False
 
 log = logging.getLogger("rca_extractor")
 
@@ -18,14 +24,12 @@ log = logging.getLogger("rca_extractor")
 def extract_json_block(text: str) -> str:
     """
     Extrae el primer bloque JSON del texto.
-    Soporta JSON envuelto en markdown (```json ... ```).
+    Soporta JSON envuelto en markdown.
     """
-    # Primero intenta bloques markdown
     md_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
     if md_match:
         return md_match.group(1)
 
-    # Luego busca el primer { ... } balanceado
     start = text.find("{")
     if start == -1:
         return "{}"
@@ -42,29 +46,48 @@ def extract_json_block(text: str) -> str:
     return "{}"
 
 
+def _try_parse(block: str) -> dict | None:
+    """Intenta parsear JSON. Devuelve dict o None si falla."""
+    try:
+        data = json.loads(block)
+        return data if isinstance(data, dict) else None
+    except json.JSONDecodeError:
+        return None
+
+
 def parse_and_validate(raw_text: str, keys: list[str]) -> dict:
     """
-    Parsea el texto crudo de Gemini y devuelve un dict validado:
-      - Claves esperadas presentes → se conservan.
-      - Claves esperadas ausentes  → se rellenan con "N/A".
-      - Claves inesperadas         → se registran como advertencia.
+    Parsea el texto crudo de Gemini y devuelve un dict validado.
     """
     block = extract_json_block(raw_text)
 
-    try:
-        data = json.loads(block)
-    except json.JSONDecodeError as exc:
-        log.warning("JSON inválido (%s). Se devolverá resultado vacío.", exc)
+    # Intento 1: JSON limpio
+    data = _try_parse(block)
+
+    # Intento 2: json-repair (si esta instalado)
+    if data is None:
+        if _HAS_JSON_REPAIR:
+            log.warning("JSON invalido. Intentando reparar con json-repair...")
+            try:
+                repaired = repair_json(block, return_objects=True)
+                data = repaired if isinstance(repaired, dict) else None
+                if data is not None:
+                    log.info("JSON reparado exitosamente.")
+            except Exception as exc:
+                log.warning("json-repair fallo: %s", exc)
+                data = None
+        else:
+            log.warning(
+                "JSON invalido y json-repair no instalado. "
+                "Ejecuta: pip install json-repair"
+            )
+
+    if data is None:
+        log.warning("No se pudo parsear el JSON. Se devolvera resultado vacio.")
         data = {}
 
-    if not isinstance(data, dict):
-        log.warning("La respuesta no es un objeto JSON. Tipo: %s", type(data))
-        data = {}
-
-    # Normalizar: todas las claves a minúsculas y sin espacios extremos
+    # Normalizar claves
     data = {k.lower().strip(): v for k, v in data.items()}
-
-    # Normalizar también las claves esperadas (defensivo ante espacios en el Excel)
     normalized_keys = [k.lower().strip() for k in keys]
 
     result: dict = {}
