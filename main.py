@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pandas as pd
+from tqdm import tqdm
 
 import config
 from logger import get_logger
@@ -45,7 +46,7 @@ def parse_args() -> argparse.Namespace:
                    help="Nº de PDFs en paralelo (default: %(default)s)")
     p.add_argument("--model",        default=config.GEMINI_MODEL,
                    help="Modelo Gemini (default: %(default)s)")
-    p.add_argument("--cooldown",     type=int, default=15,
+    p.add_argument("--cooldown",     type=int, default=config.INTER_PDF_COOLDOWN,
                    help="Segundos de pausa entre PDFs consecutivos (default: %(default)s). "
                         "Aumentar a 60+ si hay 429s frecuentes en free tier.")
     p.add_argument("--reset",        action="store_true",
@@ -64,6 +65,29 @@ def _process_one(extractor: RCAExtractor, pdf: Path, variables: list[dict]) -> t
         return pdf.name, data, None
     except Exception as exc:
         return pdf.name, None, str(exc)
+
+
+# ── Barra de progreso ─────────────────────────────────────────────────────────
+
+def _make_bar(pending: list[Path], total: int) -> tqdm:
+    """
+    Crea la barra de progreso. El total refleja el lote completo
+    y el inicial (initial) los PDFs ya procesados vía checkpoint.
+    """
+    already_done = total - len(pending)
+    return tqdm(
+        total=total,
+        initial=already_done,
+        unit="PDF",
+        desc="Extrayendo variables",
+        bar_format=(
+            "{desc}: {percentage:3.0f}%|{bar}| "
+            "PDF {n_fmt}/{total_fmt} "
+            "[{elapsed}<{remaining}, {rate_fmt}]"
+        ),
+        dynamic_ncols=True,
+        colour="green",
+    )
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -134,48 +158,61 @@ def main() -> int:
     def _flush(results: list[dict]) -> None:
         """Guarda el Excel de forma progresiva."""
         df = pd.DataFrame(results)
-        # Columna 'archivo' al frente
         cols = ["archivo"] + [c for c in df.columns if c != "archivo"]
         df[cols].to_excel(output_file, index=False)
 
     if args.workers == 1:
-        # Modo secuencial
-        for idx, pdf in enumerate(pending):
-            name, data, err = _process_one(extractor, pdf, variables)
-            if data:
-                results.append(data)
-                checkpoint.mark_ok(name)
-                stats["ok"] += 1
-                _flush(results)
-            else:
-                log.error("❌ %s: %s", name, err)
-                checkpoint.mark_error(name, err or "desconocido")
-                stats["error"] += 1
+        # Modo secuencial con barra de progreso
+        with _make_bar(pending, len(pdfs)) as bar:
+            for idx, pdf in enumerate(pending):
+                # Descripción dinámica: nombre del PDF actual
+                bar.set_description(
+                    f"Extrayendo variables de RCA {bar.n + 1}/{len(pdfs)} — {pdf.name}"
+                )
+                name, data, err = _process_one(extractor, pdf, variables)
 
-            # Pausa entre PDFs para respetar el rate limit de Gemini.
-            # No se aplica después del último PDF.
-            if args.cooldown > 0 and idx < len(pending) - 1:
-                log.info("Cooldown de %ds antes del siguiente PDF…", args.cooldown)
-                time.sleep(args.cooldown)
-    else:
-        # Modo concurrente
-        log.info("Procesando con %d workers en paralelo.", args.workers)
-        with ThreadPoolExecutor(max_workers=args.workers) as pool:
-            futures = {
-                pool.submit(_process_one, extractor, pdf, variables): pdf
-                for pdf in pending
-            }
-            for future in as_completed(futures):
-                name, data, err = future.result()
                 if data:
                     results.append(data)
                     checkpoint.mark_ok(name)
                     stats["ok"] += 1
                     _flush(results)
+                    bar.set_postfix(ok=stats["ok"], error=stats["error"], refresh=False)
                 else:
                     log.error("❌ %s: %s", name, err)
                     checkpoint.mark_error(name, err or "desconocido")
                     stats["error"] += 1
+                    bar.set_postfix(ok=stats["ok"], error=stats["error"], refresh=False)
+
+                bar.update(1)
+
+                # Cooldown entre PDFs (no después del último)
+                if args.cooldown > 0 and idx < len(pending) - 1:
+                    bar.set_description(f"Cooldown {args.cooldown}s…")
+                    time.sleep(args.cooldown)
+
+    else:
+        # Modo concurrente con barra de progreso
+        log.info("Procesando con %d workers en paralelo.", args.workers)
+        with _make_bar(pending, len(pdfs)) as bar:
+            with ThreadPoolExecutor(max_workers=args.workers) as pool:
+                futures = {
+                    pool.submit(_process_one, extractor, pdf, variables): pdf
+                    for pdf in pending
+                }
+                for future in as_completed(futures):
+                    name, data, err = future.result()
+                    if data:
+                        results.append(data)
+                        checkpoint.mark_ok(name)
+                        stats["ok"] += 1
+                        _flush(results)
+                    else:
+                        log.error("❌ %s: %s", name, err)
+                        checkpoint.mark_error(name, err or "desconocido")
+                        stats["error"] += 1
+
+                    bar.set_postfix(ok=stats["ok"], error=stats["error"], refresh=False)
+                    bar.update(1)
 
     # 6. Resumen
     elapsed = time.time() - t0
