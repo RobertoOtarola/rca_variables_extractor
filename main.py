@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
                    help="Nº de PDFs en paralelo (default: %(default)s)")
     p.add_argument("--model",        default=config.GEMINI_MODEL,
                    help="Modelo Gemini (default: %(default)s)")
-    p.add_argument("--cooldown",     type=int, default=15,
+    p.add_argument("--cooldown",     type=int, default=config.INTER_PDF_COOLDOWN,
                    help="Segundos de pausa entre PDFs consecutivos (default: %(default)s). "
                         "Aumentar a 60+ si hay 429s frecuentes en free tier.")
     p.add_argument("--reset",        action="store_true",

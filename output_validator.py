@@ -42,7 +42,7 @@ def extract_json_block(text: str) -> str:
     return "{}"
 
 
-def parse_and_validate(raw_text: str, expected_keys: list[str]) -> dict:
+def parse_and_validate(raw_text: str, keys: list[str]) -> dict:
     """
     Parsea el texto crudo de Gemini y devuelve un dict validado:
       - Claves esperadas presentes → se conservan.
@@ -61,13 +61,16 @@ def parse_and_validate(raw_text: str, expected_keys: list[str]) -> dict:
         log.warning("La respuesta no es un objeto JSON. Tipo: %s", type(data))
         data = {}
 
-    # Normalizar: todas las claves a minúsculas por si Gemini cambió el case
-    data = {k.lower(): v for k, v in data.items()}
+    # Normalizar: todas las claves a minúsculas y sin espacios extremos
+    data = {k.lower().strip(): v for k, v in data.items()}
+
+    # Normalizar también las claves esperadas (defensivo ante espacios en el Excel)
+    normalized_keys = [k.lower().strip() for k in keys]
 
     result: dict = {}
     missing = []
 
-    for key in expected_keys:
+    for key in normalized_keys:
         if key in data:
             result[key] = data[key]
         else:
@@ -77,7 +80,7 @@ def parse_and_validate(raw_text: str, expected_keys: list[str]) -> dict:
     if missing:
         log.debug("Claves faltantes rellenas con N/A: %s", missing)
 
-    unexpected = set(data.keys()) - set(expected_keys)
+    unexpected = set(data.keys()) - set(normalized_keys)
     if unexpected:
         log.warning("Claves inesperadas ignoradas: %s", unexpected)
 

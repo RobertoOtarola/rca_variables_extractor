@@ -67,11 +67,13 @@ python tools/check_pdfs.py data/raw/ --deep --hash --strict
 ### 2. Extraer variables
 
 ```bash
-# Prueba con 5 PDFs
-python main.py --pdf-folder data/raw --output data/processed/rca_results.xlsx --workers 1
+# Prueba con 5 PDFs (free tier: cooldown generoso)
+python main.py --pdf-folder data/raw --output data/processed/rca_results.xlsx \
+  --workers 1 --cooldown 60
 
-# Lote completo
-python main.py --pdf-folder data/raw --output data/processed/rca_results.xlsx --workers 2
+# Lote completo (con billing activado)
+python main.py --pdf-folder data/raw --output data/processed/rca_results.xlsx \
+  --workers 1 --cooldown 5
 
 # Reanudar ejecución interrumpida
 python main.py --pdf-folder data/raw --output data/processed/rca_results.xlsx
@@ -107,8 +109,9 @@ Opciones:
   --pdf-folder   Carpeta con PDFs de RCA          (default: rcas/)
   --variables    Excel con variables a extraer     (default: seia-variables.xlsx)
   --output       Archivo Excel de salida           (default: rca_results.xlsx)
-  --workers      Nº de PDFs en paralelo            (default: 2)
+  --workers      Nº de PDFs en paralelo            (default: 1)
   --model        Modelo Gemini                     (default: gemini-2.0-flash)
+  --cooldown     Segundos de pausa entre PDFs      (default: 15 — usar 60+ en free tier)
   --reset        Ignorar checkpoint, reprocesar todo
   --dry-run      Listar PDFs pendientes sin procesar
 ```

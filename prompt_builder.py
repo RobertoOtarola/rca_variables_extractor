@@ -24,12 +24,12 @@ def _to_snake_key(text: str) -> str:
     Ej: 'Potencia nominal bruta (MW)' → 'potencia_nominal_bruta_mw'
     """
     text = text.lower()
-    text = re.sub(r"[áàä]", "a", text)
-    text = re.sub(r"[éèë]", "e", text)
-    text = re.sub(r"[íìï]", "i", text)
-    text = re.sub(r"[óòö]", "o", text)
-    text = re.sub(r"[úùü]", "u", text)
-    text = re.sub(r"[ñ]", "n", text)
+    text = re.sub(r"[áàäâã]", "a", text)
+    text = re.sub(r"[éèëê]",   "e", text)
+    text = re.sub(r"[íìïî]",   "i", text)
+    text = re.sub(r"[óòöôõ]",  "o", text)
+    text = re.sub(r"[úùüû]",   "u", text)
+    text = re.sub(r"[ñ]",      "n", text)
     text = re.sub(r"[^a-z0-9]+", "_", text)
     text = re.sub(r"_+", "_", text).strip("_")
     return text
