@@ -12,30 +12,13 @@ Flujo:
 import logging
 from pathlib import Path
 
-import pypdf
-
 from gemini_client import GeminiClient
 from prompt_builder import build_prompt, expected_keys
 from output_validator import parse_and_validate
-from check_pdfs import is_scanned_pdf
+from pdf_utils import detect_scanned
 import config
 
 log = logging.getLogger("rca_extractor")
-
-
-def _detect_scanned(pdf_path: Path) -> bool:
-    """
-    Devuelve True si el PDF no tiene texto extraíble (es una imagen escaneada).
-    Usa la misma lógica que check_pdfs.py para consistencia.
-    """
-    try:
-        with open(pdf_path, "rb") as f:
-            reader = pypdf.PdfReader(f, strict=False)
-            scanned, _ = is_scanned_pdf(reader)
-            return scanned
-    except Exception as exc:
-        log.warning("No se pudo determinar si %s es escaneado: %s. Asumiendo texto.", pdf_path.name, exc)
-        return False
 
 
 class RCAExtractor:
@@ -65,7 +48,7 @@ class RCAExtractor:
         prompt = build_prompt(variables, prompt_file=config.PROMPT_FILE)
         keys   = expected_keys(variables)
 
-        scanned = _detect_scanned(pdf_path)
+        scanned = detect_scanned(pdf_path)
 
         if scanned:
             log.info("📷 %s detectado como escaneado → procesando por imágenes", pdf_path.name)
@@ -88,9 +71,11 @@ class RCAExtractor:
                 self.client.delete_file(file_ref)
 
         data = parse_and_validate(raw, keys)
-        data["archivo"]  = pdf_path.name
+        data["archivo"]   = pdf_path.name
         data["escaneado"] = "sí" if scanned else "no"
-        log.info("✓ %s → %d variables extraídas%s",
-                 pdf_path.name, len(data) - 2,
-                 " [escaneado]" if scanned else "")
+        log.info(
+            "✓ %s → %d variables extraídas%s",
+            pdf_path.name, len(data) - 2,
+            " [escaneado]" if scanned else "",
+        )
         return data
