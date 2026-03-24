@@ -1,5 +1,5 @@
 """
-gemini_client.py — Cliente Gemini con backoff exponencial y limpieza garantizada.
+gemini_client.py — Cliente Gemini con backoff inteligente y limpieza garantizada.
 Actualizado para usar SDK google-genai.
 """
 
@@ -12,15 +12,61 @@ from google.genai import types
 
 log = logging.getLogger("rca_extractor")
 
-# Tiempo mínimo de espera cuando la API responde con 429 / RESOURCE_EXHAUSTED.
-# gemini-2.0-flash free tier tiene límite de ~15 RPM → ventana de 60 s.
-_QUOTA_MIN_WAIT = 65.0   # segundos
-_QUOTA_MAX_WAIT = 600.0  # techo: 10 minutos
+# ── Clasificación de errores ──────────────────────────────────────────────────
+_QUOTA_CODES     = {"429", "RESOURCE_EXHAUSTED"}
+_TRANSIENT_CODES = {"500", "502", "503", "INTERNAL", "UNAVAILABLE"}
+_FATAL_CODES     = {"400", "401", "403", "404",
+                    "INVALID_ARGUMENT", "PERMISSION_DENIED",
+                    "UNAUTHENTICATED", "NOT_FOUND"}
+
+# Tiempos de espera
+_QUOTA_MIN_WAIT     = 65.0   # piso para 429
+_QUOTA_MAX_WAIT     = 300.0  # techo: 5 minutos
+_TRANSIENT_MIN_WAIT =  2.0   # piso para 5xx
+_TRANSIENT_MAX_WAIT = 60.0   # techo: 1 minuto
 
 
-def _is_quota_error(exc_str: str) -> bool:
-    """Devuelve True si el error es un 429 o RESOURCE_EXHAUSTED."""
-    return "429" in exc_str or "RESOURCE_EXHAUSTED" in exc_str
+def _classify_error(exc_str: str) -> str:
+    """
+    Clasifica el error en:
+      'quota'     → 429 / RESOURCE_EXHAUSTED  (backoff largo)
+      'transient' → 5xx / UNAVAILABLE         (backoff corto)
+      'fatal'     → 400 / 404 / etc.          (falla inmediata)
+    """
+    for code in _QUOTA_CODES:
+        if code in exc_str:
+            return "quota"
+    for code in _FATAL_CODES:
+        if code in exc_str:
+            return "fatal"
+    for code in _TRANSIENT_CODES:
+        if code in exc_str:
+            return "transient"
+    return "transient"  # default conservador
+
+
+def _compute_wait(kind: str, attempt: int, exc_str: str) -> float:
+    """Calcula el tiempo de espera con backoff + jitter según el tipo de error."""
+    if kind == "quota":
+        wait = min(_QUOTA_MIN_WAIT * (2 ** attempt), _QUOTA_MAX_WAIT)
+    else:
+        wait = min(_TRANSIENT_MIN_WAIT * (2 ** attempt), _TRANSIENT_MAX_WAIT)
+
+    # Si la API indica un tiempo concreto, respetarlo (+ 2 s margen)
+    match = re.search(r"Please retry in (\d+(?:\.\d+)?)s", exc_str)
+    if match:
+        wait = max(wait, float(match.group(1)) + 2.0)
+
+    # Jitter ±10 %
+    wait *= random.uniform(0.90, 1.10)
+    return max(1.0, wait)
+
+
+def _short_err(exc_str: str) -> str:
+    """Limpia el mensaje de error eliminando el bloque JSON gigante."""
+    if " {'error':" in exc_str:
+        return exc_str.split(" {'error':")[0]
+    return exc_str.split("\n")[0]
 
 
 class GeminiClient:
@@ -33,21 +79,20 @@ class GeminiClient:
     # ── File management ───────────────────────────────────────────────────────
 
     def upload_pdf(self, path: str) -> types.File:
-        """
-        Sube el PDF a la Files API de Gemini y espera a que esté ACTIVE.
-        El polling evita enviar la request de generación antes de que el
-        archivo esté listo (error 'File is not ready').
-        """
+        """Sube el PDF a la Files API de Gemini y espera a que esté ACTIVE."""
         log.debug("Subiendo archivo: %s", path)
-        file_ref = self.client.files.upload(file=path, config={"mime_type": "application/pdf"})
+        file_ref = self.client.files.upload(
+            file=path, config={"mime_type": "application/pdf"}
+        )
 
-        # Polling hasta que el archivo esté activo (máx. 60 s)
         for _ in range(20):
             file_ref = self.client.files.get(name=file_ref.name)
             if file_ref.state.name == "ACTIVE":
                 break
             if file_ref.state.name == "FAILED":
-                raise RuntimeError(f"El archivo {path} falló al procesarse en Gemini Files API.")
+                raise RuntimeError(
+                    f"El archivo {path} falló al procesarse en Gemini Files API."
+                )
             time.sleep(3)
         else:
             raise TimeoutError(f"Timeout esperando ACTIVE en {path}")
@@ -63,29 +108,32 @@ class GeminiClient:
         except Exception as exc:
             log.warning("No se pudo eliminar %s: %s", file_ref.name, exc)
 
-    # ── Generación ────────────────────────────────────────────────────────────
+    # ── Generación (PDFs con texto) ───────────────────────────────────────────
 
-    def generate(self, prompt: str, file_ref, retries: int = 8, base_delay: float = 65.0) -> str:
+    def generate(self, prompt: str, file_ref, retries: int = 8,
+                 base_delay: float = 65.0) -> str:
         """
-        Envía el prompt + archivo a Gemini con backoff exponencial consciente de cuotas.
+        Envía el prompt + archivo a Gemini con backoff inteligente por tipo de error.
 
-        Para errores 429 / RESOURCE_EXHAUSTED la espera mínima es _QUOTA_MIN_WAIT (65 s)
-        porque el free tier de gemini-2.0-flash tiene un límite de ~15 RPM.
-        Si la API incluye "Please retry in Xs" se respeta ese valor cuando supera
-        el mínimo calculado.
-
-        Devuelve el texto de la respuesta o '{}' ante bloqueo de seguridad.
+          - fatal (400/401/403/404): falla inmediata, sin reintentos.
+          - quota (429):             backoff largo [65s, 300s].
+          - transient (5xx):         backoff corto [2s, 60s].
         """
         gen_config = types.GenerateContentConfig(
             temperature=self.temperature,
             response_mime_type="text/plain",
         )
 
+        pdf_part = types.Part.from_uri(
+            file_uri=file_ref.uri,
+            mime_type="application/pdf",
+        )
+
         for attempt in range(retries):
             try:
                 response = self.client.models.generate_content(
                     model=self.model_name,
-                    contents=[file_ref, prompt],
+                    contents=[pdf_part, prompt],
                     config=gen_config,
                 )
                 try:
@@ -98,51 +146,34 @@ class GeminiClient:
 
             except Exception as exc:
                 exc_str = str(exc)
+                kind = _classify_error(exc_str)
+                err  = _short_err(exc_str)
 
-                # ── Calcular tiempo de espera ──────────────────────────────
-                if _is_quota_error(exc_str):
-                    # Backoff exponencial con piso de _QUOTA_MIN_WAIT
-                    wait = min(_QUOTA_MIN_WAIT * (2 ** attempt), _QUOTA_MAX_WAIT)
-                else:
-                    # Otros errores: backoff suave (2, 4, 8, 16 … s)
-                    wait = base_delay * (2 ** attempt)
+                if kind == "fatal":
+                    log.error("Error fatal (sin reintentos): %s", err)
+                    raise RuntimeError(f"Error fatal de Gemini: {err}")
 
-                # Si la API indica un tiempo concreto, respetarlo (+ 2 s de margen)
-                match = re.search(r"Please retry in (\d+(?:\.\d+)?)s", exc_str)
-                if match:
-                    api_wait = float(match.group(1)) + 2.0
-                    wait = max(wait, api_wait)
-
-                # Jitter ±10 % para evitar thundering herd con múltiples workers
-                wait += random.uniform(-wait * 0.10, wait * 0.10)
-                wait = max(1.0, wait)  # nunca menos de 1 s
-
-                # ── Log limpio (sin el bloque JSON gigante del error) ──────
-                short_err = exc_str.split(" {'error':")[0] if " {'error':" in exc_str else exc_str.split("\n")[0]
-
+                wait = _compute_wait(kind, attempt, exc_str)
                 log.warning(
-                    "Intento %d/%d fallido: %s. Reintentando en %.1fs…",
-                    attempt + 1, retries, short_err, wait,
+                    "Intento %d/%d fallido [%s]: %s. Reintentando en %.1fs…",
+                    attempt + 1, retries, kind, err, wait,
                 )
                 if attempt < retries - 1:
                     time.sleep(wait)
 
         raise RuntimeError(f"Gemini no respondió después de {retries} intentos.")
 
-    def generate_from_images(
-        self,
-        prompt: str,
-        pdf_path: str,
-        retries: int = 8,
-        base_delay: float = 65.0,
-        dpi: int = 150,
-    ) -> str:
-        """
-        Convierte el PDF a imágenes (una por página) usando pymupdf y las envía
-        a Gemini como Parts. Usado para PDFs escaneados sin capa de texto.
+    # ── Generación (PDFs escaneados → imágenes) ───────────────────────────────
 
-        dpi=150 es suficiente para texto impreso y mantiene el tamaño bajo.
-        Sube a dpi=200 si la extracción falla en documentos con texto pequeño.
+    def generate_from_images(self, prompt: str, pdf_path: str,
+                             retries: int = 8, base_delay: float = 65.0,
+                             dpi: int = 150) -> str:
+        """
+        Convierte el PDF a imágenes PNG con pymupdf y las envía a Gemini.
+        Usado para PDFs escaneados sin capa de texto.
+
+        dpi=150 es suficiente para texto impreso.
+        Subir a dpi=200 si la extracción falla en documentos con texto pequeño.
         """
         try:
             import fitz  # pymupdf
@@ -159,13 +190,13 @@ class GeminiClient:
 
         for page in doc:
             pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY)
-            img_bytes = pix.tobytes("png")
             image_parts.append(
-                types.Part.from_bytes(data=img_bytes, mime_type="image/png")
+                types.Part.from_bytes(data=pix.tobytes("png"), mime_type="image/png")
             )
 
         doc.close()
-        log.debug("PDF convertido: %d páginas → %d imágenes", len(image_parts), len(image_parts))
+        log.debug("PDF convertido: %d páginas → %d imágenes",
+                  len(image_parts), len(image_parts))
 
         gen_config = types.GenerateContentConfig(
             temperature=self.temperature,
@@ -190,30 +221,16 @@ class GeminiClient:
             except Exception as exc:
                 exc_str = str(exc)
                 kind = _classify_error(exc_str)
-                short_err = (
-                    exc_str.split(" {'error':")[0]
-                    if " {'error':" in exc_str
-                    else exc_str.split("\n")[0]
-                )
+                err  = _short_err(exc_str)
 
                 if kind == "fatal":
-                    log.error("Error fatal (sin reintentos): %s", short_err)
-                    raise RuntimeError(f"Error fatal de Gemini: {short_err}")
+                    log.error("Error fatal (sin reintentos): %s", err)
+                    raise RuntimeError(f"Error fatal de Gemini: {err}")
 
-                wait = (
-                    min(_QUOTA_MIN_WAIT * (2 ** attempt), _QUOTA_MAX_WAIT)
-                    if kind == "quota"
-                    else min(_TRANSIENT_MIN_WAIT * (2 ** attempt), _TRANSIENT_MAX_WAIT)
-                )
-                match = re.search(r"Please retry in (\d+(?:\.\d+)?)s", exc_str)
-                if match:
-                    wait = max(wait, float(match.group(1)) + 2.0)
-                wait *= random.uniform(0.90, 1.10)
-                wait = max(1.0, wait)
-
+                wait = _compute_wait(kind, attempt, exc_str)
                 log.warning(
                     "Intento %d/%d fallido [%s]: %s. Reintentando en %.1fs…",
-                    attempt + 1, retries, kind, short_err, wait,
+                    attempt + 1, retries, kind, err, wait,
                 )
                 if attempt < retries - 1:
                     time.sleep(wait)
