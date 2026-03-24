@@ -2,22 +2,40 @@
 pdf_pipeline.py — Orquesta el procesamiento de un PDF individual.
 
 Flujo:
-  1. Sube el PDF a Gemini Files API.
-  2. Construye el prompt con las variables.
-  3. Genera la respuesta.
-  4. Valida y normaliza el JSON de salida.
-  5. Siempre limpia el archivo de Gemini (try/finally).
+  1. Detecta si el PDF es escaneado (sin texto extraíble).
+  2a. PDF con texto   → sube a Gemini Files API → generate()
+  2b. PDF escaneado   → convierte páginas a imágenes → generate_from_images()
+  3. Valida y normaliza el JSON de salida.
+  4. Siempre limpia el archivo de Gemini (solo para PDFs con texto).
 """
 
 import logging
 from pathlib import Path
 
+import pypdf
+
 from gemini_client import GeminiClient
 from prompt_builder import build_prompt, expected_keys
 from output_validator import parse_and_validate
+from check_pdfs import is_scanned_pdf
 import config
 
 log = logging.getLogger("rca_extractor")
+
+
+def _detect_scanned(pdf_path: Path) -> bool:
+    """
+    Devuelve True si el PDF no tiene texto extraíble (es una imagen escaneada).
+    Usa la misma lógica que check_pdfs.py para consistencia.
+    """
+    try:
+        with open(pdf_path, "rb") as f:
+            reader = pypdf.PdfReader(f, strict=False)
+            scanned, _ = is_scanned_pdf(reader)
+            return scanned
+    except Exception as exc:
+        log.warning("No se pudo determinar si %s es escaneado: %s. Asumiendo texto.", pdf_path.name, exc)
+        return False
 
 
 class RCAExtractor:
@@ -33,14 +51,13 @@ class RCAExtractor:
             model=model or config.GEMINI_MODEL,
             temperature=temperature if temperature is not None else config.TEMPERATURE,
         )
-        self.max_retries = max_retries or config.MAX_RETRIES
+        self.max_retries      = max_retries or config.MAX_RETRIES
         self.retry_base_delay = retry_base_delay or config.RETRY_BASE_DELAY
 
     def process_pdf(self, pdf_path: str | Path, variables: list[dict]) -> dict:
         """
         Procesa un PDF y devuelve un dict con las variables extraídas.
-        Agrega la clave 'archivo' con el nombre del PDF.
-        Garantiza la eliminación del archivo en Gemini.
+        Detecta automáticamente si el PDF es escaneado y usa el método adecuado.
         """
         pdf_path = Path(pdf_path)
         log.info("Procesando: %s", pdf_path.name)
@@ -48,19 +65,32 @@ class RCAExtractor:
         prompt = build_prompt(variables, prompt_file=config.PROMPT_FILE)
         keys   = expected_keys(variables)
 
-        file_ref = self.client.upload_pdf(str(pdf_path))
+        scanned = _detect_scanned(pdf_path)
 
-        try:
-            raw = self.client.generate(
+        if scanned:
+            log.info("📷 %s detectado como escaneado → procesando por imágenes", pdf_path.name)
+            raw = self.client.generate_from_images(
                 prompt=prompt,
-                file_ref=file_ref,
+                pdf_path=str(pdf_path),
                 retries=self.max_retries,
                 base_delay=self.retry_base_delay,
             )
-            data = parse_and_validate(raw, keys)
-            data["archivo"] = pdf_path.name
-            log.info("✓ %s → %d variables extraídas", pdf_path.name, len(data) - 1)
-            return data
+        else:
+            file_ref = self.client.upload_pdf(str(pdf_path))
+            try:
+                raw = self.client.generate(
+                    prompt=prompt,
+                    file_ref=file_ref,
+                    retries=self.max_retries,
+                    base_delay=self.retry_base_delay,
+                )
+            finally:
+                self.client.delete_file(file_ref)
 
-        finally:
-            self.client.delete_file(file_ref)
+        data = parse_and_validate(raw, keys)
+        data["archivo"]  = pdf_path.name
+        data["escaneado"] = "sí" if scanned else "no"
+        log.info("✓ %s → %d variables extraídas%s",
+                 pdf_path.name, len(data) - 2,
+                 " [escaneado]" if scanned else "")
+        return data
