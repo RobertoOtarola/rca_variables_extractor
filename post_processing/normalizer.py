@@ -1,0 +1,108 @@
+"""
+post_processing/normalizer.py — Convierte columnas string → tipos Python correctos.
+
+El prompt ya forzó formato numérico estricto (punto decimal, sin unidades),
+así que la normalización es mayormente un pd.to_numeric + mapeo de categorías.
+"""
+
+import logging
+import pandas as pd
+import numpy as np
+
+log = logging.getLogger("rca_extractor")
+
+# ── Columnas numéricas ────────────────────────────────────────────────────────
+NUMERIC_COLS: dict[str, str] = {
+    "potencia_nominal_bruta_mw":            "float64",
+    "superficie_total_intervenida_ha":       "float64",
+    "intensidad_de_uso_de_suelo_ha_mw_1":   "float64",
+    "vida_util_anos":                        "float64",
+    "factor_de_planta":                      "float64",
+    "perdida_de_cobertura_vegetal_ha":       "float64",
+    "emisiones_mp10_t_ano_1":                "float64",
+    "emisiones_mp2_5_t_ano_1":               "float64",
+    "consumo_de_agua_dulce_m3_mwh_1":        "float64",
+    "emisiones_gei_embebidas_kg_co2_eq_kwh_1": "float64",
+}
+
+# ── Mapeo vocabulario controlado para tipo de generación ─────────────────────
+TECH_MAP: dict[str, str] = {
+    "fotovoltaica":             "FV",
+    "fv":                       "FV",
+    "fotovoltaico":             "FV",
+    "eólica":                   "Eólica",
+    "eolica":                   "Eólica",
+    "eólico":                   "Eólica",
+    "eolico":                   "Eólica",
+    "csp":                      "CSP",
+    "concentración solar":      "CSP",
+    "termosolar":               "CSP",
+    "eólica + fotovoltaica":    "Eólica+FV",
+    "fotovoltaica + csp":       "FV+CSP",
+}
+
+
+def _to_numeric(series: pd.Series) -> pd.Series:
+    """
+    Convierte una serie de strings a float.
+    Trata 'N/A', 'n/a', 'nan', '' como NaN.
+    """
+    return pd.to_numeric(
+        series.astype(str)
+              .str.strip()
+              .replace({"N/A": np.nan, "n/a": np.nan, "nan": np.nan, "": np.nan}),
+        errors="coerce",
+    )
+
+
+def _normalize_tech(series: pd.Series) -> pd.Series:
+    """Estandariza tipo de generación a FV / Eólica / CSP / híbridos."""
+    def _map(val):
+        if pd.isna(val) or str(val).strip().lower() in ("n/a", "nan", ""):
+            return np.nan
+        key = str(val).strip().lower()
+        return TECH_MAP.get(key, str(val).strip())
+    return series.map(_map)
+
+
+def normalize(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Recibe el DataFrame crudo del Excel de extracción y devuelve uno con:
+      - Columnas numéricas convertidas a float64 (NaN donde no aplica)
+      - tipo_de_generacion estandarizado
+      - columna 'intensidad_calculada' cuando falta pero se puede derivar
+    """
+    df = df.copy()
+
+    # 1. Convertir numéricas
+    for col, dtype in NUMERIC_COLS.items():
+        if col in df.columns:
+            df[col] = _to_numeric(df[col])
+
+    # 2. Estandarizar tipo de generación
+    if "tipo_de_generacion_eolica_fv_csp" in df.columns:
+        df["tipo_de_generacion_eolica_fv_csp"] = _normalize_tech(
+            df["tipo_de_generacion_eolica_fv_csp"]
+        )
+
+    # 3. Derivar intensidad uso suelo cuando falta pero hay potencia y superficie
+    if all(c in df.columns for c in [
+        "intensidad_de_uso_de_suelo_ha_mw_1",
+        "superficie_total_intervenida_ha",
+        "potencia_nominal_bruta_mw",
+    ]):
+        mask = (
+            df["intensidad_de_uso_de_suelo_ha_mw_1"].isna()
+            & df["superficie_total_intervenida_ha"].notna()
+            & df["potencia_nominal_bruta_mw"].notna()
+            & (df["potencia_nominal_bruta_mw"] > 0)
+        )
+        df.loc[mask, "intensidad_de_uso_de_suelo_ha_mw_1"] = (
+            df.loc[mask, "superficie_total_intervenida_ha"]
+            / df.loc[mask, "potencia_nominal_bruta_mw"]
+        ).round(4)
+        n_derived = mask.sum()
+        if n_derived:
+            log.info("Intensidad uso suelo derivada en %d registros.", n_derived)
+
+    return df
