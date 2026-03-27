@@ -18,8 +18,8 @@ Utiliza la API de Google Gemini para procesar nativamente PDFs completos (con te
 | 🔁 **Retry inteligente** | ✅ | Clasifica errores (fatal/quota/transient) con backoff diferenciado |
 | 🔧 **JSON repair** | ✅ | Repara JSON malformado antes de descartar resultados |
 | 📊 **Barra de progreso** | ✅ | tqdm con N/Total, ETA y conteo ok/error en tiempo real |
-| 🗄️ **Post-procesamiento** | 🚧 | Normalización, validación de rangos, persistencia en BD |
-| 🌍 **Geoespacial** | 🚧 | Coordenadas UTM → geometrías, intersección con SNASPE |
+| 🗄️ **Post-procesamiento** | ✅ | Normalización de tipos, validación de rangos, SQLite |
+| 🌍 **Geoespacial** | ✅ | Parser UTM multi-formato → WGS84, GeoJSON, resumen regional |
 | 📈 **Dashboard** | 🚧 | Streamlit + Plotly con mapas, KPIs y gráficos |
 | 🌱 **ACV** | 🚧 | Análisis de Ciclo de Vida con factores IPCC/NREL |
 
@@ -33,6 +33,7 @@ Utiliza la API de Google Gemini para procesar nativamente PDFs completos (con te
 | PDFs escaneados (procesados vía imágenes) | **125 (29.1%)** |
 | Irrecuperables (400 INVALID_ARGUMENT) | 2 (349.pdf, 616.pdf) |
 | Variables extraídas por RCA | 16 |
+| Proyectos georreferenciados | **262 / 430 (60.9%)** |
 | Tiempo total (pasada 1 + pasada 2) | ~19.5 horas |
 | Costo API Gemini | **8.878 CLP (~$8.9 USD aprox.)** |
 
@@ -87,7 +88,6 @@ python main.py \
   2>&1 | tee logs/run_pasada1_$(date +%Y%m%d_%H%M).log
 
 # Pasada 2 — solo los fallidos, con más paciencia
-# (el checkpoint salta automáticamente los exitosos)
 python main.py \
   --pdf-folder data/raw \
   --output data/processed/results.xlsx \
@@ -95,7 +95,32 @@ python main.py \
   2>&1 | tee logs/run_pasada2_$(date +%Y%m%d_%H%M).log
 ```
 
-### 3. Ejecutar tests
+### 3. Post-procesamiento (Fase 2)
+
+```bash
+# Normaliza tipos, valida rangos, persiste en SQLite
+python -m post_processing.run --input data/processed/results.xlsx
+
+# Outputs: results_normalized.xlsx, validation_report.xlsx, rca_data.db
+```
+
+### 4. Georreferenciación (Fase 3)
+
+```bash
+# Solo parseo de coordenadas → WGS84
+python -m geo.run --input data/processed/results_normalized.xlsx
+
+# Con análisis de áreas protegidas SNASPE (requiere shapefile)
+python -m geo.run \
+  --input data/processed/results_normalized.xlsx \
+  --protected data/geo/snaspe.shp \
+  --protected-name-col NOMBRE \
+  --buffer-km 5
+
+# Outputs: results_geo.xlsx, region_summary.xlsx, projects.geojson
+```
+
+### 5. Ejecutar tests
 
 ```bash
 python -m pytest tests/ -v
@@ -105,10 +130,9 @@ python -m pytest tests/ -v
 
 ## Opciones del CLI
 
-```
-python main.py [opciones]
+### `main.py`
 
-Opciones:
+```
   --pdf-folder   Carpeta con PDFs de RCA           (default: rcas/)
   --variables    Excel con variables a extraer      (default: seia-variables.xlsx)
   --output       Archivo Excel de salida            (default: rca_results.xlsx)
@@ -120,30 +144,63 @@ Opciones:
   --dry-run      Listar PDFs pendientes sin procesar
 ```
 
+### `post_processing/run.py`
+
+```
+  --input        Excel de extracción               (default: data/processed/results.xlsx)
+  --output-dir   Carpeta de salida                 (default: data/processed)
+  --db           URL SQLAlchemy                    (default: sqlite:///data/processed/rca_data.db)
+  --no-db        Omite persistencia en BD
+  --sigma        Umbral z-score para outliers       (default: 3.0)
+```
+
+### `geo/run.py`
+
+```
+  --input              Excel normalizado             (default: data/processed/results_normalized.xlsx)
+  --output-dir         Carpeta de salida             (default: data/processed)
+  --protected          Shapefile áreas protegidas    (opcional — SNASPE/sitios prioritarios)
+  --protected-name-col Columna de nombre en shapefile
+  --buffer-km          Radio de buffer en km         (default: 5.0)
+```
+
 ---
 
 ## Estructura del Proyecto
 
 ```
 rca_variables_extractor/
-├── main.py                  # CLI principal con barra de progreso (tqdm)
-├── config.py                # Configuración centralizada (.env)
-├── gemini_client.py         # Cliente Gemini: retry inteligente por tipo de error
-├── pdf_pipeline.py          # Orquesta extracción (texto o imágenes según tipo PDF)
-├── pdf_utils.py             # Detección de PDFs escaneados (compartido)
-├── prompt_builder.py        # Construcción de prompts dinámicos
-├── output_validator.py      # Validación + reparación de JSON (json-repair)
-├── checkpoint.py            # Checkpoint/resume entre ejecuciones
-├── logger.py                # Logging rotativo (consola + archivo)
+├── main.py                    # CLI principal con barra de progreso (tqdm)
+├── config.py                  # Configuración centralizada (.env)
+├── gemini_client.py           # Cliente Gemini: retry inteligente por tipo de error
+├── pdf_pipeline.py            # Orquesta extracción (texto o imágenes según tipo PDF)
+├── pdf_utils.py               # Detección de PDFs escaneados (compartido)
+├── prompt_builder.py          # Construcción de prompts dinámicos
+├── output_validator.py        # Validación + reparación de JSON (json-repair)
+├── checkpoint.py              # Checkpoint/resume entre ejecuciones
+├── logger.py                  # Logging rotativo (consola + archivo)
 │
 ├── prompts/
-│   └── extraction_prompt.md # Prompt con formatos estrictos por variable
+│   └── extraction_prompt.md  # Prompt con formatos estrictos por variable
+│
+├── post_processing/           # Fase 2 — normalización + validación + BD
+│   ├── __init__.py
+│   ├── normalizer.py          # String → float64, vocabulario controlado, derivación
+│   ├── validator.py           # Rangos científicos, outliers 3σ, completitud
+│   ├── db_storage.py          # SQLAlchemy → SQLite (upsert con flags de validación)
+│   └── run.py                 # CLI: genera results_normalized.xlsx + rca_data.db
+│
+├── geo/                       # Fase 3 — georreferenciación
+│   ├── __init__.py
+│   ├── coord_parser.py        # Parser UTM multi-formato → WGS84 (10+ patrones regex)
+│   ├── spatial_analysis.py    # GeoDataFrame, intersección SNASPE, resumen regional
+│   └── run.py                 # CLI: genera results_geo.xlsx + projects.geojson
 │
 ├── tools/
-│   ├── check_pdfs.py        # Auditoría masiva de PDFs (corruptos, cifrados, escaneados)
-│   ├── check_gitignore.py   # Verificar archivos trackeados vs .gitignore
-│   ├── list_models.py       # Listar modelos Gemini disponibles
-│   └── snippet_api_key.py   # Test rápido de conexión API
+│   ├── check_pdfs.py          # Auditoría masiva de PDFs (corruptos, cifrados, escaneados)
+│   ├── check_gitignore.py
+│   ├── list_models.py
+│   └── snippet_api_key.py
 │
 ├── tests/
 │   ├── conftest.py
@@ -151,16 +208,23 @@ rca_variables_extractor/
 │   ├── test_output_validator.py
 │   └── test_checkpoint.py
 │
-├── post_processing/         # 🚧 Fase 2 — normalización + BD
-├── geo/                     # 🚧 Fase 3 — geoespacial
-├── lca/                     # 🚧 Fase 4 — ACV
-├── api/                     # 🚧 Fase 4 — FastAPI
-├── dashboard/               # 🚧 Fase 4 — Streamlit
+├── lca/                       # 🚧 Fase 4 — ACV
+├── api/                       # 🚧 Fase 4 — FastAPI
+├── dashboard/                 # 🚧 Fase 4 — Streamlit
 │
 ├── data/
-│   └── raw/                 # PDFs originales (no versionados)
+│   ├── raw/                   # PDFs originales (no versionados)
+│   ├── geo/                   # Shapefiles SNASPE (no versionados)
+│   └── processed/             # Outputs de pipeline (no versionados)
+│       ├── results.xlsx               # Extracción cruda
+│       ├── results_normalized.xlsx    # Tipos normalizados (Fase 2)
+│       ├── validation_report.xlsx     # Flags de rango y outliers
+│       ├── rca_data.db                # SQLite (Fase 2)
+│       ├── results_geo.xlsx           # Con lon/lat WGS84 (Fase 3)
+│       ├── region_summary.xlsx        # Métricas por región
+│       └── projects.geojson           # GeoJSON para QGIS/Mapbox
 │
-├── seia-variables.xlsx      # Schema de variables a extraer
+├── seia-variables.xlsx        # Schema de variables a extraer
 ├── requirements.txt
 └── .env.example
 ```
@@ -177,6 +241,8 @@ rca_variables_extractor/
 | Reparación JSON | json-repair |
 | Progreso | tqdm |
 | Datos | Pandas + openpyxl |
+| Post-procesamiento | SQLAlchemy + SQLite |
+| Geoespacial | GeoPandas, Shapely, pyproj |
 | Configuración | python-dotenv |
 
 ---
@@ -204,17 +270,32 @@ rca_variables_extractor/
 | `emisiones_gei_embebidas_kg_co2_eq_kwh_1` | 0% | No reportado en RCAs (dato ACV) |
 | `caracteristicas_del_generador` | 97.2% | Texto descriptivo conciso |
 
-> Las variables con baja completitud (factor de planta, consumo de agua, GEI) no están en las RCAs — son datos de operación o ACV que se calcularán en la Fase 2.
+> Variables con baja completitud (factor de planta, consumo de agua, GEI) no están en las RCAs — se calcularán en la Fase 4 (ACV).
+
+---
+
+## Outputs del Pipeline
+
+| Archivo | Fase | Descripción |
+|---------|------|-------------|
+| `results.xlsx` | 1 | Extracción cruda — 430 filas × 18 columnas |
+| `results_normalized.xlsx` | 2 | Tipos float64, vocabulario controlado |
+| `validation_report.xlsx` | 2 | Hojas: completitud, fuera_de_rango, outliers |
+| `rca_data.db` | 2 | SQLite — 430 proyectos con flags de validación |
+| `results_geo.xlsx` | 3 | Con lon/lat WGS84, huso, método de parseo |
+| `region_summary.xlsx` | 3 | Métricas agregadas por región |
+| `projects.geojson` | 3 | 262 proyectos georreferenciados para QGIS/Mapbox |
 
 ---
 
 ## Costos
 
-| Modelo | PDFs | Costo |
-|--------|------|-------|
-| gemini-2.5-flash pasada 1 | 420 | 8.654 CLP |
-| gemini-2.5-flash pasada 2 | 12 | 224 CLP |
-| **Total** | **430** | **8.878 CLP** |
+| Concepto | Valor |
+|----------|-------|
+| gemini-2.5-flash pasada 1 (420 PDFs) | 8.654 CLP |
+| gemini-2.5-flash pasada 2 (12 PDFs) | 224 CLP |
+| **Total** | **8.878 CLP (~$8.9 USD)** |
+| Costo por PDF | ~20.6 CLP / ~$0.022 USD |
 
 ---
 
