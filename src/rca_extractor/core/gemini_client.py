@@ -88,13 +88,16 @@ class GeminiClient:
     def upload_pdf(self, path: str) -> types.File:
         """Sube el PDF a la Files API de Gemini y espera a que esté ACTIVE."""
         log.debug("Subiendo archivo: %s", path)
-        file_ref = self.client.files.upload(file=path, config={"mime_type": "application/pdf"})
+        file_ref = self.client.files.upload(file=path, config={"mime_type": "application/pdf"})  # type: ignore
+
+        if not file_ref.name:
+            raise RuntimeError("Gemini no devolvió un nombre de archivo.")
 
         for _ in range(20):
             file_ref = self.client.files.get(name=file_ref.name)
-            if file_ref.state.name == "ACTIVE":
+            if file_ref.state and file_ref.state.name == "ACTIVE":
                 break
-            if file_ref.state.name == "FAILED":
+            if file_ref.state and file_ref.state.name == "FAILED":
                 raise RuntimeError(f"El archivo {path} falló al procesarse en Gemini Files API.")
             time.sleep(3)
         else:
@@ -105,6 +108,8 @@ class GeminiClient:
 
     def delete_file(self, file_ref: types.File) -> None:
         """Elimina el archivo de la Files API. Falla silenciosamente."""
+        if not file_ref.name:
+            return
         try:
             self.client.files.delete(name=file_ref.name)
             log.debug("Archivo eliminado: %s", file_ref.name)
@@ -122,24 +127,29 @@ class GeminiClient:
           - transient (5xx):         backoff corto [2s, 60s].
         """
         gen_config = types.GenerateContentConfig(
-            temperature=self.temperature,
-            response_mime_type="text/plain",
+            temperature=self.temperature,  # type: ignore
+            response_mime_type="text/plain",  # type: ignore
         )
 
+        if not file_ref.uri:
+            raise RuntimeError("Gemini no devolvió un URI válido.")
+
         pdf_part = types.Part.from_uri(
-            file_uri=file_ref.uri,
-            mime_type="application/pdf",
+            file_uri=file_ref.uri,  # type: ignore
+            mime_type="application/pdf",  # type: ignore
         )
+        
+        contents_list: list[types.Part | str] = [pdf_part, prompt]
 
         for attempt in range(retries):
             try:
                 response = self.client.models.generate_content(
                     model=self.model_name,
-                    contents=[pdf_part, prompt],
+                    contents=contents_list,  # type: ignore
                     config=gen_config,
                 )
                 try:
-                    text = response.text
+                    text = response.text or ""
                     log.debug("Respuesta recibida (%d chars)", len(text))
                     return text
                 except ValueError:
@@ -202,19 +212,21 @@ class GeminiClient:
         log.debug("PDF convertido: %d páginas → %d imágenes", len(image_parts), len(image_parts))
 
         gen_config = types.GenerateContentConfig(
-            temperature=self.temperature,
-            response_mime_type="text/plain",
+            temperature=self.temperature,  # type: ignore
+            response_mime_type="text/plain",  # type: ignore
         )
+
+        contents_list: list[types.Part | str] = [*image_parts, prompt]
 
         for attempt in range(retries):
             try:
                 response = self.client.models.generate_content(
                     model=self.model_name,
-                    contents=[*image_parts, prompt],
+                    contents=contents_list,  # type: ignore
                     config=gen_config,
                 )
                 try:
-                    text = response.text
+                    text = response.text or ""
                     log.debug("Respuesta recibida (%d chars)", len(text))
                     return text
                 except ValueError:

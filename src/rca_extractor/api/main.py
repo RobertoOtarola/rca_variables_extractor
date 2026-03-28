@@ -88,7 +88,7 @@ def stats(db: Session = Depends(get_db)):
     # Conteos por tecnología (usando los valores normalizados en BD: FV, Eólica)
     n_fv = db.query(Project).filter(Project.tipo_de_generacion_eolica_fv_csp.ilike("%FV%")).count()
     n_eo = db.query(Project).filter(Project.tipo_de_generacion_eolica_fv_csp.ilike("%Eólica%")).count()
-    n_scanned = db.query(Project).filter(Project.escaneado == True).count()
+    n_scanned = db.query(Project).filter(Project.escaneado.is_(True)).count()
 
     return {
         "total_projects":      total,

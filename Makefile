@@ -3,17 +3,17 @@
 check: lint test
 
 test:
-	PYTHONPATH=src pytest tests/
+	PYTHONPATH=src uv run pytest tests/
 
 lint:
-	ruff check src/
-	mypy src/rca_extractor/core/
+	uv run ruff check src/
+	uv run mypy src/rca_extractor/core/
 
 format:
-	ruff format src/
+	uv run ruff format src/
 
 start-api:
-	uvicorn rca_extractor.api.main:app --reload
+	uv run uvicorn rca_extractor.api.main:app --reload
 
 start-dashboard:
-	streamlit run src/rca_extractor/dashboard/app.py
+	uv run streamlit run src/rca_extractor/dashboard/app.py

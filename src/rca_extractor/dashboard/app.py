@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from pathlib import Path
 
 from rca_extractor.lca.calculator import calculate
 from rca_extractor.post_processing.db_storage import get_engine
@@ -111,7 +110,8 @@ def load_geo() -> pd.DataFrame:
 @st.cache_data
 def load_region_summary(df: pd.DataFrame) -> pd.DataFrame:
     """Calcula resumen regional dinámicamente desde el dataframe principal."""
-    if df.empty: return pd.DataFrame()
+    if df.empty:
+        return pd.DataFrame()
     return df.groupby("region").agg(
         n_proyectos=("archivo", "count"),
         potencia_total_mw=("potencia_nominal_bruta_mw", "sum")
@@ -167,7 +167,6 @@ def render_kpis(df: pd.DataFrame):
     sup_kha = df["superficie_total_intervenida_ha"].sum() / 1000
     twh = df["lifetime_energy_mwh"].sum() / 1e6 if "lifetime_energy_mwh" in df else 0
     ghg_mt = df["ghg_total_kt"].sum() / 1000 if "ghg_total_kt" in df else 0
-    vida_med = df["vida_util_anos"].median()
 
     cols = st.columns(5)
     cols[0].metric("Proyectos", f"{len(df):,}")
