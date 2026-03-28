@@ -7,6 +7,11 @@ build/
 .venv/
 venv/
 
+# Testing y Dependencies
+.coverage
+htmlcov/
+uv.lock
+
 # Entorno
 .env
 *.env.local
@@ -58,3 +63,5 @@ GITHUB_PROJECTS.md
 implementation_plan*.md
 task_*.md
 walkthrough_*.md
+chatgpt*.md
+claude*.md
