@@ -103,7 +103,7 @@ class GeminiClient:
         log.debug("Archivo activo: %s", file_ref.name)
         return file_ref
 
-    def delete_file(self, file_ref) -> None:
+    def delete_file(self, file_ref: types.File) -> None:
         """Elimina el archivo de la Files API. Falla silenciosamente."""
         try:
             self.client.files.delete(name=file_ref.name)
@@ -113,7 +113,7 @@ class GeminiClient:
 
     # ── Generación (PDFs con texto) ───────────────────────────────────────────
 
-    def generate(self, prompt: str, file_ref, retries: int = 8, base_delay: float = 65.0) -> str:
+    def generate(self, prompt: str, file_ref: types.File, retries: int = 8, base_delay: float = 65.0) -> str:
         """
         Envía el prompt + archivo a Gemini con backoff inteligente por tipo de error.
 
