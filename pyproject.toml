@@ -9,7 +9,7 @@ description = "Extractor automático de variables RCA usando Gemini"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "google-genai>=0.5.0",
+    "google-genai>=1.0.0,<2.0.0",
     "pandas>=2.0.0",
     "openpyxl>=3.1.0",
     "python-dotenv>=1.0.0",
@@ -46,5 +46,5 @@ line-length = 100
 target-version = "py311"
 
 [tool.pytest.ini_options]
-addopts = "-v --cov=rca_extractor"
+addopts = "-v --cov=src/rca_extractor --cov-report=term-missing"
 testpaths = ["tests"]
