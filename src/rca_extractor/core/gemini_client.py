@@ -13,17 +13,24 @@ from google.genai import types
 log = logging.getLogger("rca_extractor")
 
 # ── Clasificación de errores ──────────────────────────────────────────────────
-_QUOTA_CODES     = {"429", "RESOURCE_EXHAUSTED"}
+_QUOTA_CODES = {"429", "RESOURCE_EXHAUSTED"}
 _TRANSIENT_CODES = {"500", "502", "503", "INTERNAL", "UNAVAILABLE"}
-_FATAL_CODES     = {"400", "401", "403", "404",
-                    "INVALID_ARGUMENT", "PERMISSION_DENIED",
-                    "UNAUTHENTICATED", "NOT_FOUND"}
+_FATAL_CODES = {
+    "400",
+    "401",
+    "403",
+    "404",
+    "INVALID_ARGUMENT",
+    "PERMISSION_DENIED",
+    "UNAUTHENTICATED",
+    "NOT_FOUND",
+}
 
 # Tiempos de espera
-_QUOTA_MIN_WAIT     = 65.0   # piso para 429
-_QUOTA_MAX_WAIT     = 300.0  # techo: 5 minutos
-_TRANSIENT_MIN_WAIT =  2.0   # piso para 5xx
-_TRANSIENT_MAX_WAIT = 60.0   # techo: 1 minuto
+_QUOTA_MIN_WAIT = 65.0  # piso para 429
+_QUOTA_MAX_WAIT = 300.0  # techo: 5 minutos
+_TRANSIENT_MIN_WAIT = 2.0  # piso para 5xx
+_TRANSIENT_MAX_WAIT = 60.0  # techo: 1 minuto
 
 
 def _classify_error(exc_str: str) -> str:
@@ -48,9 +55,9 @@ def _classify_error(exc_str: str) -> str:
 def _compute_wait(kind: str, attempt: int, exc_str: str) -> float:
     """Calcula el tiempo de espera con backoff + jitter según el tipo de error."""
     if kind == "quota":
-        wait = min(_QUOTA_MIN_WAIT * (2 ** attempt), _QUOTA_MAX_WAIT)
+        wait = min(_QUOTA_MIN_WAIT * (2**attempt), _QUOTA_MAX_WAIT)
     else:
-        wait = min(_TRANSIENT_MIN_WAIT * (2 ** attempt), _TRANSIENT_MAX_WAIT)
+        wait = min(_TRANSIENT_MIN_WAIT * (2**attempt), _TRANSIENT_MAX_WAIT)
 
     # Si la API indica un tiempo concreto, respetarlo (+ 2 s margen)
     match = re.search(r"Please retry in (\d+(?:\.\d+)?)s", exc_str)
@@ -81,18 +88,14 @@ class GeminiClient:
     def upload_pdf(self, path: str) -> types.File:
         """Sube el PDF a la Files API de Gemini y espera a que esté ACTIVE."""
         log.debug("Subiendo archivo: %s", path)
-        file_ref = self.client.files.upload(
-            file=path, config={"mime_type": "application/pdf"}
-        )
+        file_ref = self.client.files.upload(file=path, config={"mime_type": "application/pdf"})
 
         for _ in range(20):
             file_ref = self.client.files.get(name=file_ref.name)
             if file_ref.state.name == "ACTIVE":
                 break
             if file_ref.state.name == "FAILED":
-                raise RuntimeError(
-                    f"El archivo {path} falló al procesarse en Gemini Files API."
-                )
+                raise RuntimeError(f"El archivo {path} falló al procesarse en Gemini Files API.")
             time.sleep(3)
         else:
             raise TimeoutError(f"Timeout esperando ACTIVE en {path}")
@@ -110,8 +113,7 @@ class GeminiClient:
 
     # ── Generación (PDFs con texto) ───────────────────────────────────────────
 
-    def generate(self, prompt: str, file_ref, retries: int = 8,
-                 base_delay: float = 65.0) -> str:
+    def generate(self, prompt: str, file_ref, retries: int = 8, base_delay: float = 65.0) -> str:
         """
         Envía el prompt + archivo a Gemini con backoff inteligente por tipo de error.
 
@@ -147,7 +149,7 @@ class GeminiClient:
             except Exception as exc:
                 exc_str = str(exc)
                 kind = _classify_error(exc_str)
-                err  = _short_err(exc_str)
+                err = _short_err(exc_str)
 
                 if kind == "fatal":
                     log.error("Error fatal (sin reintentos): %s", err)
@@ -156,7 +158,11 @@ class GeminiClient:
                 wait = _compute_wait(kind, attempt, exc_str)
                 log.warning(
                     "Intento %d/%d fallido [%s]: %s. Reintentando en %.1fs…",
-                    attempt + 1, retries, kind, err, wait,
+                    attempt + 1,
+                    retries,
+                    kind,
+                    err,
+                    wait,
                 )
                 if attempt < retries - 1:
                     time.sleep(wait)
@@ -165,9 +171,9 @@ class GeminiClient:
 
     # ── Generación (PDFs escaneados → imágenes) ───────────────────────────────
 
-    def generate_from_images(self, prompt: str, pdf_path: str,
-                             retries: int = 8, base_delay: float = 65.0,
-                             dpi: int = 150) -> str:
+    def generate_from_images(
+        self, prompt: str, pdf_path: str, retries: int = 8, base_delay: float = 65.0, dpi: int = 150
+    ) -> str:
         """
         Convierte el PDF a imágenes PNG con pymupdf y las envía a Gemini.
         Usado para PDFs escaneados sin capa de texto.
@@ -178,9 +184,7 @@ class GeminiClient:
         try:
             import fitz  # pymupdf
         except ImportError:
-            raise RuntimeError(
-                "pymupdf no está instalado. Ejecuta: pip install pymupdf"
-            )
+            raise RuntimeError("pymupdf no está instalado. Ejecuta: pip install pymupdf")
 
         log.debug("Convirtiendo PDF a imágenes: %s (dpi=%d)", pdf_path, dpi)
 
@@ -195,8 +199,7 @@ class GeminiClient:
             )
 
         doc.close()
-        log.debug("PDF convertido: %d páginas → %d imágenes",
-                  len(image_parts), len(image_parts))
+        log.debug("PDF convertido: %d páginas → %d imágenes", len(image_parts), len(image_parts))
 
         gen_config = types.GenerateContentConfig(
             temperature=self.temperature,
@@ -221,7 +224,7 @@ class GeminiClient:
             except Exception as exc:
                 exc_str = str(exc)
                 kind = _classify_error(exc_str)
-                err  = _short_err(exc_str)
+                err = _short_err(exc_str)
 
                 if kind == "fatal":
                     log.error("Error fatal (sin reintentos): %s", err)
@@ -230,7 +233,11 @@ class GeminiClient:
                 wait = _compute_wait(kind, attempt, exc_str)
                 log.warning(
                     "Intento %d/%d fallido [%s]: %s. Reintentando en %.1fs…",
-                    attempt + 1, retries, kind, err, wait,
+                    attempt + 1,
+                    retries,
+                    kind,
+                    err,
+                    wait,
                 )
                 if attempt < retries - 1:
                     time.sleep(wait)

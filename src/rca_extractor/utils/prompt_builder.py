@@ -9,7 +9,6 @@ Estrategia:
 """
 
 import re
-import os
 import logging
 import pandas as pd
 from pathlib import Path
@@ -18,6 +17,7 @@ log = logging.getLogger("rca_extractor")
 
 # ── Normalización de claves ───────────────────────────────────────────────────
 
+
 def _to_snake_key(text: str) -> str:
     """
     Convierte un nombre de variable legible en una clave JSON snake_case.
@@ -25,17 +25,18 @@ def _to_snake_key(text: str) -> str:
     """
     text = text.lower()
     text = re.sub(r"[áàäâã]", "a", text)
-    text = re.sub(r"[éèëê]",   "e", text)
-    text = re.sub(r"[íìïî]",   "i", text)
-    text = re.sub(r"[óòöôõ]",  "o", text)
-    text = re.sub(r"[úùüû]",   "u", text)
-    text = re.sub(r"[ñ]",      "n", text)
+    text = re.sub(r"[éèëê]", "e", text)
+    text = re.sub(r"[íìïî]", "i", text)
+    text = re.sub(r"[óòöôõ]", "o", text)
+    text = re.sub(r"[úùüû]", "u", text)
+    text = re.sub(r"[ñ]", "n", text)
     text = re.sub(r"[^a-z0-9]+", "_", text)
     text = re.sub(r"_+", "_", text).strip("_")
     return text
 
 
 # ── Carga del archivo de variables ───────────────────────────────────────────
+
 
 def load_variables(path: Path | str, column: str = "Variable Clave") -> list[dict]:
     """
@@ -49,7 +50,9 @@ def load_variables(path: Path | str, column: str = "Variable Clave") -> list[dic
     df = pd.read_excel(path)
 
     if column not in df.columns:
-        raise ValueError(f"Columna '{column}' no existe en {path}. Disponibles: {df.columns.tolist()}")
+        raise ValueError(
+            f"Columna '{column}' no existe en {path}. Disponibles: {df.columns.tolist()}"
+        )
 
     variables = []
     for label in df[column].dropna():
@@ -62,6 +65,7 @@ def load_variables(path: Path | str, column: str = "Variable Clave") -> list[dic
 
 
 # ── Carga del system prompt base ─────────────────────────────────────────────
+
 
 def _load_system_prompt(prompt_file: Path) -> str:
     if prompt_file.exists():
@@ -77,6 +81,7 @@ def _load_system_prompt(prompt_file: Path) -> str:
 
 # ── Constructor de prompt ─────────────────────────────────────────────────────
 
+
 def build_prompt(variables: list[dict], prompt_file: Path | None = None) -> str:
     """
     Construye el prompt completo:
@@ -84,9 +89,13 @@ def build_prompt(variables: list[dict], prompt_file: Path | None = None) -> str:
       - Lista de variables con su clave JSON esperada.
       - Ejemplo de formato de salida.
     """
-    base = _load_system_prompt(prompt_file) if prompt_file else (
-        "Eres un analista ambiental experto en RCA de Chile. "
-        "Extrae las variables indicadas. Devuelve SOLO JSON válido."
+    base = (
+        _load_system_prompt(prompt_file)
+        if prompt_file
+        else (
+            "Eres un analista ambiental experto en RCA de Chile. "
+            "Extrae las variables indicadas. Devuelve SOLO JSON válido."
+        )
     )
 
     lines = []
@@ -120,6 +129,7 @@ Devuelve ÚNICAMENTE el siguiente JSON (sin markdown, sin comentarios, sin texto
 
 
 # ── Utilidad: diccionario de claves esperadas ─────────────────────────────────
+
 
 def expected_keys(variables: list[dict]) -> list[str]:
     """Devuelve la lista de claves snake_case esperadas en el JSON de salida."""

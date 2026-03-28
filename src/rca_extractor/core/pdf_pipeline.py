@@ -34,7 +34,7 @@ class RCAExtractor:
             model=model or config.GEMINI_MODEL,
             temperature=temperature if temperature is not None else config.TEMPERATURE,
         )
-        self.max_retries      = max_retries or config.MAX_RETRIES
+        self.max_retries = max_retries or config.MAX_RETRIES
         self.retry_base_delay = retry_base_delay or config.RETRY_BASE_DELAY
 
     def process_pdf(self, pdf_path: str | Path, variables: list[dict]) -> dict:
@@ -46,7 +46,7 @@ class RCAExtractor:
         log.info("Procesando: %s", pdf_path.name)
 
         prompt = build_prompt(variables, prompt_file=config.PROMPT_FILE)
-        keys   = expected_keys(variables)
+        keys = expected_keys(variables)
 
         scanned = detect_scanned(pdf_path)
 
@@ -71,11 +71,12 @@ class RCAExtractor:
                 self.client.delete_file(file_ref)
 
         data = parse_and_validate(raw, keys)
-        data["archivo"]   = pdf_path.name
+        data["archivo"] = pdf_path.name
         data["escaneado"] = "sí" if scanned else "no"
         log.info(
             "✓ %s → %d variables extraídas%s",
-            pdf_path.name, len(data) - 2,
+            pdf_path.name,
+            len(data) - 2,
             " [escaneado]" if scanned else "",
         )
         return data

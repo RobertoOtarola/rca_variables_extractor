@@ -11,7 +11,6 @@ Opciones avanzadas:
 import argparse
 import sys
 import time
-import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -30,37 +29,66 @@ log = get_logger(log_file=config.LOG_FILE)
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description="Extractor automático de variables RCA usando Gemini."
+    p = argparse.ArgumentParser(description="Extractor automático de variables RCA usando Gemini.")
+    p.add_argument(
+        "--pdf-folder",
+        default=str(config.PDF_FOLDER),
+        help="Carpeta con los PDFs de RCA (default: %(default)s)",
     )
-    p.add_argument("--pdf-folder",   default=str(config.PDF_FOLDER),
-                   help="Carpeta con los PDFs de RCA (default: %(default)s)")
-    p.add_argument("--variables",    default=str(config.VARIABLES_FILE),
-                   help="Excel con las variables a extraer (default: %(default)s)")
-    p.add_argument("--output",       default=str(config.OUTPUT_FILE),
-                   help="Archivo Excel de salida (default: %(default)s)")
-    p.add_argument("--checkpoint",   default=str(config.CHECKPOINT_FILE),
-                   help="Archivo de checkpoint (default: %(default)s)")
-    p.add_argument("--workers",      type=int, default=config.MAX_WORKERS,
-                   help="Nº de PDFs en paralelo (default: %(default)s)")
-    p.add_argument("--model",        default=config.GEMINI_MODEL,
-                   help="Modelo Gemini (default: %(default)s)")
-    p.add_argument("--max-retries",  type=int, default=config.MAX_RETRIES,
-                   help="Reintentos por PDF ante errores de API (default: %(default)s)")
-    p.add_argument("--cooldown",     type=int, default=config.INTER_PDF_COOLDOWN,
-                   help="Segundos de pausa entre PDFs consecutivos (default: %(default)s). "
-                        "Aumentar a 60+ si hay 429s frecuentes en free tier.")
-    p.add_argument("--reset",        action="store_true",
-                   help="Ignora el checkpoint y reprocesa todos los PDFs")
-    p.add_argument("--dry-run",      action="store_true",
-                   help="Lista los PDFs pendientes sin procesarlos")
+    p.add_argument(
+        "--variables",
+        default=str(config.VARIABLES_FILE),
+        help="Excel con las variables a extraer (default: %(default)s)",
+    )
+    p.add_argument(
+        "--output",
+        default=str(config.OUTPUT_FILE),
+        help="Archivo Excel de salida (default: %(default)s)",
+    )
+    p.add_argument(
+        "--checkpoint",
+        default=str(config.CHECKPOINT_FILE),
+        help="Archivo de checkpoint (default: %(default)s)",
+    )
+    p.add_argument(
+        "--workers",
+        type=int,
+        default=config.MAX_WORKERS,
+        help="Nº de PDFs en paralelo (default: %(default)s)",
+    )
+    p.add_argument(
+        "--model", default=config.GEMINI_MODEL, help="Modelo Gemini (default: %(default)s)"
+    )
+    p.add_argument(
+        "--max-retries",
+        type=int,
+        default=config.MAX_RETRIES,
+        help="Reintentos por PDF ante errores de API (default: %(default)s)",
+    )
+    p.add_argument(
+        "--cooldown",
+        type=int,
+        default=config.INTER_PDF_COOLDOWN,
+        help="Segundos de pausa entre PDFs consecutivos (default: %(default)s). "
+        "Aumentar a 60+ si hay 429s frecuentes en free tier.",
+    )
+    p.add_argument(
+        "--reset", action="store_true", help="Ignora el checkpoint y reprocesa todos los PDFs"
+    )
+    p.add_argument(
+        "--dry-run", action="store_true", help="Lista los PDFs pendientes sin procesarlos"
+    )
     return p.parse_args()
 
 
 # ── Procesamiento individual (para ThreadPoolExecutor) ───────────────────────
 
-def _process_one(extractor: RCAExtractor, pdf: Path, variables: list[dict]) -> tuple[str, dict | None, str | None]:
+
+def _process_one(
+    extractor: RCAExtractor, pdf: Path, variables: list[dict]
+) -> tuple[str, dict | None, str | None]:
     """Retorna (nombre, datos_o_None, mensaje_error_o_None)."""
     try:
         data = extractor.process_pdf(pdf, variables)
@@ -70,6 +98,7 @@ def _process_one(extractor: RCAExtractor, pdf: Path, variables: list[dict]) -> t
 
 
 # ── Barra de progreso ─────────────────────────────────────────────────────────
+
 
 def _make_bar(pending: list[Path], total: int) -> tqdm:
     """
@@ -95,10 +124,11 @@ def _make_bar(pending: list[Path], total: int) -> tqdm:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+
 def main() -> int:
     args = parse_args()
 
-    pdf_folder  = Path(args.pdf_folder)
+    pdf_folder = Path(args.pdf_folder)
     output_file = Path(args.output)
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -145,7 +175,8 @@ def main() -> int:
         try:
             pending_names = {p.name for p in pending}
             existing_results = [
-                r for r in pd.read_excel(output_file).to_dict("records")
+                r
+                for r in pd.read_excel(output_file).to_dict("records")
                 if r.get("archivo") not in pending_names
             ]
             log.info("Resultados previos cargados: %d filas", len(existing_results))
@@ -168,9 +199,7 @@ def main() -> int:
         # Modo secuencial con barra de progreso
         with _make_bar(pending, len(pdfs)) as bar:
             for idx, pdf in enumerate(pending):
-                bar.set_description(
-                    f"Extrayendo RCA {bar.n + 1}/{len(pdfs)} — {pdf.name}"
-                )
+                bar.set_description(f"Extrayendo RCA {bar.n + 1}/{len(pdfs)} — {pdf.name}")
                 name, data, err = _process_one(extractor, pdf, variables)
 
                 if data:
@@ -197,8 +226,7 @@ def main() -> int:
         with _make_bar(pending, len(pdfs)) as bar:
             with ThreadPoolExecutor(max_workers=args.workers) as pool:
                 futures = {
-                    pool.submit(_process_one, extractor, pdf, variables): pdf
-                    for pdf in pending
+                    pool.submit(_process_one, extractor, pdf, variables): pdf for pdf in pending
                 }
                 for future in as_completed(futures):
                     name, data, err = future.result()
@@ -219,7 +247,10 @@ def main() -> int:
     elapsed = time.time() - t0
     log.info(
         "── Resumen ── OK: %d | Error: %d | Total: %d | Tiempo: %.1fs",
-        stats["ok"], stats["error"], len(pending), elapsed
+        stats["ok"],
+        stats["error"],
+        len(pending),
+        elapsed,
     )
     log.info("Resultados guardados en: %s", output_file)
     return 0 if stats["error"] == 0 else 2

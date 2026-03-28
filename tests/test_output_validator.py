@@ -6,7 +6,7 @@ de Gemini.
 """
 
 import pytest
-from output_validator import extract_json_block, parse_and_validate
+from rca_extractor.utils.output_validator import extract_json_block, parse_and_validate
 
 
 class TestExtractJsonBlock:

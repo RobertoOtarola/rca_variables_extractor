@@ -18,9 +18,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from post_processing.normalizer import normalize
-from post_processing.validator  import validate_ranges, detect_outliers, completeness_report
-from post_processing.db_storage import get_engine, init_db, upsert_projects
+from rca_extractor.post_processing.normalizer import normalize
+from rca_extractor.post_processing.validator import (
+    validate_ranges,
+    detect_outliers,
+    completeness_report,
+)
+from rca_extractor.post_processing.db_storage import get_engine, init_db, upsert_projects
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,16 +36,26 @@ log = logging.getLogger("rca_extractor")
 
 def parse_args():
     p = argparse.ArgumentParser(description="Post-procesamiento RCA Extractor")
-    p.add_argument("--input",  default="data/processed/results.xlsx",
-                   help="Excel de extracción (default: %(default)s)")
-    p.add_argument("--output-dir", default="data/processed",
-                   help="Carpeta de salida (default: %(default)s)")
-    p.add_argument("--db",     default="sqlite:///data/processed/rca_data.db",
-                   help="URL SQLAlchemy para la BD (default: %(default)s)")
-    p.add_argument("--no-db",  action="store_true",
-                   help="Omite la persistencia en BD")
-    p.add_argument("--sigma",  type=float, default=3.0,
-                   help="Umbral z-score para outliers (default: %(default)s)")
+    p.add_argument(
+        "--input",
+        default="data/processed/results.xlsx",
+        help="Excel de extracción (default: %(default)s)",
+    )
+    p.add_argument(
+        "--output-dir", default="data/processed", help="Carpeta de salida (default: %(default)s)"
+    )
+    p.add_argument(
+        "--db",
+        default="sqlite:///data/processed/rca_data.db",
+        help="URL SQLAlchemy para la BD (default: %(default)s)",
+    )
+    p.add_argument("--no-db", action="store_true", help="Omite la persistencia en BD")
+    p.add_argument(
+        "--sigma",
+        type=float,
+        default=3.0,
+        help="Umbral z-score para outliers (default: %(default)s)",
+    )
     return p.parse_args()
 
 
@@ -80,9 +94,9 @@ def main():
     # 7. Guardar reporte de validación
     out_val = out_dir / "validation_report.xlsx"
     with pd.ExcelWriter(out_val) as writer:
-        completeness_df.to_excel(writer, sheet_name="completitud",   index=False)
-        range_df.to_excel(       writer, sheet_name="fuera_de_rango", index=False)
-        outlier_df.to_excel(     writer, sheet_name="outliers",       index=False)
+        completeness_df.to_excel(writer, sheet_name="completitud", index=False)
+        range_df.to_excel(writer, sheet_name="fuera_de_rango", index=False)
+        outlier_df.to_excel(writer, sheet_name="outliers", index=False)
     log.info("Reporte de validación: %s", out_val)
 
     # 8. Persistir en BD
@@ -96,13 +110,18 @@ def main():
     # 9. Resumen
     log.info("── Resumen ──────────────────────────────────")
     log.info("  Filas normalizadas : %d", len(df))
-    log.info("  Flags fuera rango  : %d en %d proyectos",
-             len(range_df), range_df["archivo"].nunique() if len(range_df) else 0)
-    log.info("  Outliers (%.1fσ)   : %d en %d proyectos",
-             args.sigma, len(outlier_df),
-             outlier_df["archivo"].nunique() if len(outlier_df) else 0)
-    log.info("  Completitud media  : %.1f%%",
-             completeness_df["completitud_pct"].mean())
+    log.info(
+        "  Flags fuera rango  : %d en %d proyectos",
+        len(range_df),
+        range_df["archivo"].nunique() if len(range_df) else 0,
+    )
+    log.info(
+        "  Outliers (%.1fσ)   : %d en %d proyectos",
+        args.sigma,
+        len(outlier_df),
+        outlier_df["archivo"].nunique() if len(outlier_df) else 0,
+    )
+    log.info("  Completitud media  : %.1f%%", completeness_df["completitud_pct"].mean())
     log.info("─────────────────────────────────────────────")
     return 0
 

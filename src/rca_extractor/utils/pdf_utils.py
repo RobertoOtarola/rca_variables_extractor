@@ -10,7 +10,7 @@ from pathlib import Path
 log = logging.getLogger("rca_extractor")
 
 SCANNED_CHARS_THRESHOLD = 50
-SCANNED_SAMPLE_PAGES    = 5
+SCANNED_SAMPLE_PAGES = 5
 
 
 def is_scanned_pdf(
@@ -33,7 +33,7 @@ def is_scanned_pdf(
         step = num_pages / sample_pages
         indices = [int(i * step) for i in range(sample_pages)]
 
-    total_chars  = 0
+    total_chars = 0
     pages_sampled = 0
 
     for idx in indices:
@@ -71,6 +71,7 @@ def detect_scanned(pdf_path: Path) -> bool:
     except Exception as exc:
         log.warning(
             "No se pudo determinar si %s es escaneado: %s. Asumiendo texto.",
-            pdf_path.name, exc,
+            pdf_path.name,
+            exc,
         )
         return False

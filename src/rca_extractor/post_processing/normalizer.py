@@ -13,32 +13,32 @@ log = logging.getLogger("rca_extractor")
 
 # ── Columnas numéricas ────────────────────────────────────────────────────────
 NUMERIC_COLS: dict[str, str] = {
-    "potencia_nominal_bruta_mw":            "float64",
-    "superficie_total_intervenida_ha":       "float64",
-    "intensidad_de_uso_de_suelo_ha_mw_1":   "float64",
-    "vida_util_anos":                        "float64",
-    "factor_de_planta":                      "float64",
-    "perdida_de_cobertura_vegetal_ha":       "float64",
-    "emisiones_mp10_t_ano_1":                "float64",
-    "emisiones_mp2_5_t_ano_1":               "float64",
-    "consumo_de_agua_dulce_m3_mwh_1":        "float64",
+    "potencia_nominal_bruta_mw": "float64",
+    "superficie_total_intervenida_ha": "float64",
+    "intensidad_de_uso_de_suelo_ha_mw_1": "float64",
+    "vida_util_anos": "float64",
+    "factor_de_planta": "float64",
+    "perdida_de_cobertura_vegetal_ha": "float64",
+    "emisiones_mp10_t_ano_1": "float64",
+    "emisiones_mp2_5_t_ano_1": "float64",
+    "consumo_de_agua_dulce_m3_mwh_1": "float64",
     "emisiones_gei_embebidas_kg_co2_eq_kwh_1": "float64",
 }
 
 # ── Mapeo vocabulario controlado para tipo de generación ─────────────────────
 TECH_MAP: dict[str, str] = {
-    "fotovoltaica":             "FV",
-    "fv":                       "FV",
-    "fotovoltaico":             "FV",
-    "eólica":                   "Eólica",
-    "eolica":                   "Eólica",
-    "eólico":                   "Eólica",
-    "eolico":                   "Eólica",
-    "csp":                      "CSP",
-    "concentración solar":      "CSP",
-    "termosolar":               "CSP",
-    "eólica + fotovoltaica":    "Eólica+FV",
-    "fotovoltaica + csp":       "FV+CSP",
+    "fotovoltaica": "FV",
+    "fv": "FV",
+    "fotovoltaico": "FV",
+    "eólica": "Eólica",
+    "eolica": "Eólica",
+    "eólico": "Eólica",
+    "eolico": "Eólica",
+    "csp": "CSP",
+    "concentración solar": "CSP",
+    "termosolar": "CSP",
+    "eólica + fotovoltaica": "Eólica+FV",
+    "fotovoltaica + csp": "FV+CSP",
 }
 
 
@@ -49,19 +49,21 @@ def _to_numeric(series: pd.Series) -> pd.Series:
     """
     return pd.to_numeric(
         series.astype(str)
-              .str.strip()
-              .replace({"N/A": np.nan, "n/a": np.nan, "nan": np.nan, "": np.nan}),
+        .str.strip()
+        .replace({"N/A": np.nan, "n/a": np.nan, "nan": np.nan, "": np.nan}),
         errors="coerce",
     )
 
 
 def _normalize_tech(series: pd.Series) -> pd.Series:
     """Estandariza tipo de generación a FV / Eólica / CSP / híbridos."""
+
     def _map(val):
         if pd.isna(val) or str(val).strip().lower() in ("n/a", "nan", ""):
             return np.nan
         key = str(val).strip().lower()
         return TECH_MAP.get(key, str(val).strip())
+
     return series.map(_map)
 
 
@@ -86,11 +88,14 @@ def normalize(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     # 3. Derivar intensidad uso suelo cuando falta pero hay potencia y superficie
-    if all(c in df.columns for c in [
-        "intensidad_de_uso_de_suelo_ha_mw_1",
-        "superficie_total_intervenida_ha",
-        "potencia_nominal_bruta_mw",
-    ]):
+    if all(
+        c in df.columns
+        for c in [
+            "intensidad_de_uso_de_suelo_ha_mw_1",
+            "superficie_total_intervenida_ha",
+            "potencia_nominal_bruta_mw",
+        ]
+    ):
         mask = (
             df["intensidad_de_uso_de_suelo_ha_mw_1"].isna()
             & df["superficie_total_intervenida_ha"].notna()

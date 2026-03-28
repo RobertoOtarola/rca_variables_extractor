@@ -14,16 +14,28 @@ Arrancar:
 """
 
 import math
-import sys
-from pathlib import Path
 from typing import Optional
 
-import numpy as np
-import pandas as pd
-from fastapi import FastAPI, HTTPException, Query
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-from rca_extractor.lca.calculator import calculate  # noqa: E402
+from rca_extractor.lca.calculator import calculate
+from rca_extractor.post_processing.db_storage import get_engine, Project, sessionmaker
+from rca_extractor.config import DB_URL
+
+# ── Configuración de BD ───────────────────────────────────────────────────────
+engine = get_engine(DB_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 app = FastAPI(
     title="RCA Extractor API",
@@ -32,167 +44,136 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
-app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"]
-)
-
-_DATA_DIR = _BASE / "data" / "processed"
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _load_df() -> pd.DataFrame:
-    """Carga el Excel más completo disponible (prioriza normalizado)."""
-    for fname in ("results_lca.xlsx", "results_normalized.xlsx", "results.xlsx"):
-        p = _DATA_DIR / fname
-        if p.exists():
-            return pd.read_excel(p)
-    raise FileNotFoundError(f"No se encontró results*.xlsx en {_DATA_DIR}")
-
-
-def _cast(v):
-    """Convierte tipos numpy a Python nativos para serialización JSON."""
-    if v is None or (isinstance(v, float) and math.isnan(v)):
-        return None
-    if isinstance(v, (np.integer,)):
-        return int(v)
-    if isinstance(v, (np.floating,)):
-        return float(v)
-    if isinstance(v, (np.bool_,)):
-        return bool(v)
-    return v
-
-
-def _row_to_dict(row: pd.Series) -> dict:
-    return {k: _cast(v) for k, v in row.items()}
-
-
-# ── Cache simple en memoria ────────────────────────────────────────────────────
-_cache: dict = {}
-
-
-def _df() -> pd.DataFrame:
-    if "df" not in _cache:
-        _cache["df"] = _load_df()
-    return _cache["df"]
-
-
-def _region_df() -> pd.DataFrame:
-    if "regions" not in _cache:
-        p = _DATA_DIR / "region_summary.xlsx"
-        _cache["regions"] = pd.read_excel(p) if p.exists() else pd.DataFrame()
-    return _cache["regions"]
+def _project_to_dict(proj: Project) -> dict:
+    """Convierte un objeto SQLAlchemy Project a un dict serializable."""
+    data = {c.name: getattr(proj, c.name) for c in proj.__table__.columns}
+    # Asegurar que nulos no rompan el JSON o sean consistentes con N/A si se prefiere
+    return data
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
+
 @app.get("/health", tags=["sistema"])
-def health():
-    """Liveness check — devuelve estado y cantidad de proyectos cargados."""
+def health(db: Session = Depends(get_db)):
+    """Liveness check — devuelve estado y cantidad de proyectos en BD."""
     try:
-        n = len(_df())
-        return {"status": "ok", "projects_loaded": n}
+        n = db.query(Project).count()
+        return {"status": "ok", "db_connected": True, "projects_in_db": n}
     except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=f"Database error: {str(e)}")
 
 
 @app.get("/stats", tags=["resumen"])
-def stats():
-    """KPIs globales del dataset completo."""
-    df = _df()
-    pot = df["potencia_nominal_bruta_mw"].dropna()
-    fv_mask  = df["tipo_de_generacion_eolica_fv_csp"].str.contains(
-        r"FV|[Ff]otovoltaica", na=False)
-    eo_mask  = df["tipo_de_generacion_eolica_fv_csp"].str.contains(
-        r"Eólica|Eolica", na=False)
+def stats(db: Session = Depends(get_db)):
+    """KPIs globales consultados directamente desde la base de datos."""
+    total = db.query(Project).count()
+    if total == 0:
+        return {"total_projects": 0}
 
-    region_col = df["region_provincia_y_comuna"].str.extract(
-        r"Región\s+(?:de(?:l)?\s+)?([^,]+)"
-    )[0]
+    # Agregaciones básicas
+    metrics = db.query(
+        func.sum(Project.potencia_nominal_bruta_mw),
+        func.avg(Project.potencia_nominal_bruta_mw),
+        func.max(Project.potencia_nominal_bruta_mw),
+        func.sum(Project.superficie_total_intervenida_ha),
+        func.avg(Project.vida_util_anos),
+    ).first()
+
+    # Conteos por tecnología (usando los valores normalizados en BD: FV, Eólica)
+    n_fv = db.query(Project).filter(Project.tipo_de_generacion_eolica_fv_csp.ilike("%FV%")).count()
+    n_eo = db.query(Project).filter(Project.tipo_de_generacion_eolica_fv_csp.ilike("%Eólica%")).count()
+    n_scanned = db.query(Project).filter(Project.escaneado == True).count()
 
     return {
-        "total_projects":      int(len(df)),
-        "total_gw":            round(float(pot.sum()) / 1000, 3),
-        "median_mw":           round(float(pot.median()), 2),
-        "max_mw":              round(float(pot.max()), 2),
-        "pct_fotovoltaica":    round(float(fv_mask.mean()) * 100, 1),
-        "pct_eolica":          round(float(eo_mask.mean()) * 100, 1),
-        "total_ha":            round(float(df["superficie_total_intervenida_ha"].sum()), 1),
-        "avg_vida_util_yrs":   round(float(df["vida_util_anos"].mean()), 1),
-        "n_regions":           int(region_col.nunique()),
-        "scanned_pct":         round(float((df.get("escaneado", pd.Series()) == "sí").mean()) * 100, 1),
-        # ACV (si disponibles)
-        "total_twh_lifetime":  round(float(df["lifetime_energy_mwh"].sum()) / 1e6, 2)
-                               if "lifetime_energy_mwh" in df.columns else None,
-        "total_ghg_kt":        round(float(df["ghg_total_kt"].sum()), 0)
-                               if "ghg_total_kt" in df.columns else None,
+        "total_projects":      total,
+        "total_gw":            round((metrics[0] or 0) / 1000, 3),
+        "median_mw":           round(metrics[1] or 0, 2), # AVG como proxy de mediana en SQL simple
+        "max_mw":              round(metrics[2] or 0, 2),
+        "pct_fotovoltaica":    round((n_fv / total) * 100, 1),
+        "pct_eolica":          round((n_eo / total) * 100, 1),
+        "total_ha":            round(metrics[3] or 0, 1),
+        "avg_vida_util_yrs":   round(metrics[4] or 0, 1),
+        "scanned_pct":         round((n_scanned / total) * 100, 1),
     }
 
 
 @app.get("/regions", tags=["resumen"])
-def regions():
-    """Métricas agregadas por región (from region_summary.xlsx)."""
-    reg = _region_df()
-    if reg.empty:
-        raise HTTPException(status_code=404, detail="region_summary.xlsx no encontrado")
-    return [_row_to_dict(r) for _, r in reg.iterrows()]
+def regions(db: Session = Depends(get_db)):
+    """Métricas agregadas por región (calculadas dinámicamente)."""
+    # Nota: Aquí podríamos usar una vista o una tabla 'region_summary' si fuera muy lento
+    results = db.query(
+        Project.region_provincia_y_comuna,
+        func.count(Project.archivo).label("n"),
+        func.sum(Project.potencia_nominal_bruta_mw).label("mw")
+    ).group_by(Project.region_provincia_y_comuna).all()
+
+    return [
+        {"region_raw": r[0], "count": r[1], "potencia_mw": round(r[2] or 0, 1)}
+        for r in results
+    ]
 
 
 @app.get("/projects", tags=["proyectos"])
 def list_projects(
-    page:    int   = Query(1, ge=1, description="Página (1-indexed)"),
-    size:    int   = Query(20, ge=1, le=200, description="Proyectos por página"),
-    region:  Optional[str] = Query(None, description="Filtro región (substring, insensible a tildes)"),
-    tech:    Optional[str] = Query(None, description="FV | Eólica | CSP"),
-    min_mw:  Optional[float] = Query(None, ge=0, description="Potencia mínima (MW)"),
-    max_mw:  Optional[float] = Query(None, ge=0, description="Potencia máxima (MW)"),
-    escaneado: Optional[bool] = Query(None, description="True = solo escaneados"),
+    page:      int   = Query(1, ge=1),
+    size:      int   = Query(20, ge=1, le=200),
+    region:    Optional[str] = None,
+    tech:      Optional[str] = None,
+    min_mw:    Optional[float] = None,
+    max_mw:    Optional[float] = None,
+    escaneado: Optional[bool] = None,
+    db: Session = Depends(get_db)
 ):
-    """Lista paginada de proyectos con filtros opcionales."""
-    df = _df()
+    """Lista paginada de proyectos con filtros directos de base de datos."""
+    query = db.query(Project)
 
     if region:
-        df = df[df["region_provincia_y_comuna"].str.contains(region, case=False, na=False)]
+        query = query.filter(Project.region_provincia_y_comuna.ilike(f"%{region}%"))
     if tech:
-        tech_str = str(tech) if tech else None
-        df = df[df["tipo_de_generacion_eolica_fv_csp"].str.contains(tech_str, case=False, na=False, regex=False)]
+        query = query.filter(Project.tipo_de_generacion_eolica_fv_csp.ilike(f"%{tech}%"))
     if min_mw is not None:
-        df = df[df["potencia_nominal_bruta_mw"] >= min_mw]
+        query = query.filter(Project.potencia_nominal_bruta_mw >= min_mw)
     if max_mw is not None:
-        df = df[df["potencia_nominal_bruta_mw"] <= max_mw]
-    if escaneado is not None and "escaneado" in df.columns:
-        val = "sí" if escaneado else "no"
-        df = df[df["escaneado"] == val]
+        query = query.filter(Project.potencia_nominal_bruta_mw <= max_mw)
+    if escaneado is not None:
+        query = query.filter(Project.escaneado == escaneado)
 
-    total = len(df)
-    start = (page - 1) * size
-    page_df = df.iloc[start: start + size]
+    total = query.count()
+    items = query.offset((page - 1) * size).limit(size).all()
 
     return {
         "total": total,
         "page":  page,
         "size":  size,
         "pages": math.ceil(total / size) if total else 0,
-        "items": [_row_to_dict(r) for _, r in page_df.iterrows()],
+        "items": [_project_to_dict(i) for i in items],
     }
 
 
 @app.get("/projects/{archivo}", tags=["proyectos"])
-def get_project(archivo: str):
-    """Detalle completo de un proyecto por nombre de archivo (ej: 163.pdf)."""
-    df  = _df()
-    matches = df[df["archivo"] == archivo]
-    if matches.empty:
+def get_project(archivo: str, db: Session = Depends(get_db)):
+    """Detalle completo de un proyecto por nombre de archivo."""
+    proj = db.query(Project).filter(Project.archivo == archivo).first()
+    if not proj:
         raise HTTPException(status_code=404, detail=f"Proyecto '{archivo}' no encontrado")
-    return _row_to_dict(matches.iloc[0])
+    return _project_to_dict(proj)
 
 
 @app.get("/lca/{archivo}", tags=["acv"])
-def get_lca(archivo: str):
-    """Métricas de Análisis de Ciclo de Vida calculadas para un proyecto."""
-    df = _df()
-    matches = df[df["archivo"] == archivo]
-    if matches.empty:
+def get_lca(archivo: str, db: Session = Depends(get_db)):
+    """Métricas de ACV calculadas para un proyecto de la BD."""
+    proj = db.query(Project).filter(Project.archivo == archivo).first()
+    if not proj:
         raise HTTPException(status_code=404, detail=f"Proyecto '{archivo}' no encontrado")
-    result = calculate(matches.iloc[0].to_dict())
-    return {k: _cast(v) for k, v in vars(result).items()}
+    
+    # El calculator espera un dict que coincida con las columnas del Excel
+    # El modelo Project tiene nombres de campos alineados.
+    data = _project_to_dict(proj)
+    result = calculate(data)
+    return vars(result)

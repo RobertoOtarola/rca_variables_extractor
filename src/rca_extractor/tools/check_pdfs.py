@@ -50,75 +50,71 @@ except ModuleNotFoundError:
 # Silencia los avisos de pypdf sobre PDFs dañados; el detalle va al CSV.
 logging.getLogger("pypdf").setLevel(logging.ERROR)
 
-from rca_extractor.utils.pdf_utils import is_scanned_pdf, SCANNED_CHARS_THRESHOLD, SCANNED_SAMPLE_PAGES
-
 
 # ─────────────────────────────────────────────
 # CONSTANTES Y CONFIGURACIÓN
 # ─────────────────────────────────────────────
 DEFAULT_WORKERS = 6
 DEFAULT_OUTPUT = "pdfs_report.csv"
-DEFAULT_SCAN_FOLDER = (
-    "/Users/roberto/Documents/1 Projects/CEDEUS UC/Databases/PDFs_RCAs"
-)
+DEFAULT_SCAN_FOLDER = "/Users/roberto/Documents/1 Projects/CEDEUS UC/Databases/PDFs_RCAs"
 
-HEADER_SCAN_BYTES = 1024   # bytes a leer al inicio para detectar firma
-TAIL_SCAN_BYTES   = 4096   # bytes a leer al final para buscar %%EOF
+HEADER_SCAN_BYTES = 1024  # bytes a leer al inicio para detectar firma
+TAIL_SCAN_BYTES = 4096  # bytes a leer al final para buscar %%EOF
 
 # ── Estados ────────────────────────────────────────────────────────────────────
-ESTADO_OK          = "OK"
+ESTADO_OK = "OK"
 ESTADO_ADVERTENCIA = "ADVERTENCIA"
-ESTADO_CORRUPTO    = "CORRUPTO"
-ESTADO_CIFRADO     = "CIFRADO"
+ESTADO_CORRUPTO = "CORRUPTO"
+ESTADO_CIFRADO = "CIFRADO"
 
 # ── Tipos de error (campo tipo_error en el CSV) ────────────────────────────────
-TIPO_VACIO       = "vacio"
-TIPO_FORMATO     = "formato_incorrecto"    # ZIP, PNG, HTML… renombrado como PDF
-TIPO_CABECERA    = "cabecera_faltante"     # no hay "%PDF-" en los primeros bytes
-TIPO_EOF         = "eof_faltante"          # falta "%%EOF" al final
-TIPO_CIFRADO     = "cifrado"               # PDF protegido con contraseña
-TIPO_PYPDF       = "error_pypdf"           # pypdf lanzó PyPdfError
-TIPO_IO          = "error_io"              # OSError / ValueError
-TIPO_PAGINA      = "pagina_ilegible"       # error al leer una página concreta
-TIPO_TEXTO       = "texto_no_extraible"    # texto de pág. 1 no extraíble (ADVERTENCIA)
-TIPO_INESPERADO  = "error_inesperado"      # excepción no catalogada
-TIPO_NINGUNO     = ""                      # sin error
+TIPO_VACIO = "vacio"
+TIPO_FORMATO = "formato_incorrecto"  # ZIP, PNG, HTML… renombrado como PDF
+TIPO_CABECERA = "cabecera_faltante"  # no hay "%PDF-" en los primeros bytes
+TIPO_EOF = "eof_faltante"  # falta "%%EOF" al final
+TIPO_CIFRADO = "cifrado"  # PDF protegido con contraseña
+TIPO_PYPDF = "error_pypdf"  # pypdf lanzó PyPdfError
+TIPO_IO = "error_io"  # OSError / ValueError
+TIPO_PAGINA = "pagina_ilegible"  # error al leer una página concreta
+TIPO_TEXTO = "texto_no_extraible"  # texto de pág. 1 no extraíble (ADVERTENCIA)
+TIPO_INESPERADO = "error_inesperado"  # excepción no catalogada
+TIPO_NINGUNO = ""  # sin error
 
 # ── Firmas binarias de formatos no-PDF ────────────────────────────────────────
 # Clave: primeros bytes del archivo. Valor: nombre legible del formato.
 NON_PDF_SIGNATURES: dict[bytes, str] = {
     # Archivos comprimidos / contenedores
-    b"PK\x03\x04":           "ZIP / DOCX / XLSX / PPTX",
-    b"PK\x05\x06":           "ZIP (vacío)",
-    b"PK\x07\x08":           "ZIP (spanned)",
-    b"Rar!\x1a\x07\x00":     "RAR",
+    b"PK\x03\x04": "ZIP / DOCX / XLSX / PPTX",
+    b"PK\x05\x06": "ZIP (vacío)",
+    b"PK\x07\x08": "ZIP (spanned)",
+    b"Rar!\x1a\x07\x00": "RAR",
     b"Rar!\x1a\x07\x01\x00": "RAR5",
-    b"7z\xbc\xaf'\x1c":      "7Z",
-    b"\x1f\x8b\x08":         "GZIP",
-    b"BZh":                   "BZIP2",
+    b"7z\xbc\xaf'\x1c": "7Z",
+    b"\x1f\x8b\x08": "GZIP",
+    b"BZh": "BZIP2",
     # Imágenes
-    b"\x89PNG\r\n\x1a\n":    "PNG",
-    b"\xff\xd8\xff":          "JPEG",
-    b"GIF87a":                "GIF",
-    b"GIF89a":                "GIF",
-    b"II\x2a\x00":           "TIFF (little-endian)",
-    b"MM\x00\x2a":           "TIFF (big-endian)",
-    b"BM":                    "BMP",                  # 2 bytes; verificado abajo
-    b"RIFF":                  "WebP / WAV / AVI",
-    b"\x00\x00\x01\x00":     "ICO",
+    b"\x89PNG\r\n\x1a\n": "PNG",
+    b"\xff\xd8\xff": "JPEG",
+    b"GIF87a": "GIF",
+    b"GIF89a": "GIF",
+    b"II\x2a\x00": "TIFF (little-endian)",
+    b"MM\x00\x2a": "TIFF (big-endian)",
+    b"BM": "BMP",  # 2 bytes; verificado abajo
+    b"RIFF": "WebP / WAV / AVI",
+    b"\x00\x00\x01\x00": "ICO",
     # Documentos / texto
-    b"{\rtf":                 "RTF",
-    b"\xd0\xcf\x11\xe0":     "Office 97–2003 (DOC/XLS/PPT)",  # OLE2
+    b"{\rtf": "RTF",
+    b"\xd0\xcf\x11\xe0": "Office 97–2003 (DOC/XLS/PPT)",  # OLE2
     # Vídeo / audio
     b"\x00\x00\x00\x18ftyp": "MP4",
     b"\x00\x00\x00\x1cftyp": "MP4",
-    b"fLaC":                  "FLAC",
-    b"ID3":                   "MP3",
+    b"fLaC": "FLAC",
+    b"ID3": "MP3",
 }
 
 # Firmas cortas (≤ 2 bytes) que podrían dar falsos positivos: exigimos longitud mínima
 _SHORT_SIG_MIN_LEN: dict[bytes, int] = {
-    b"BM": 14,   # cabecera BMP siempre tiene ≥ 14 bytes
+    b"BM": 14,  # cabecera BMP siempre tiene ≥ 14 bytes
 }
 
 
@@ -143,14 +139,14 @@ def md5_of_file(file_path: Path, chunk: int = 1 << 20) -> str:
 def _make_result(file_path: Path, size: int) -> dict:
     """Crea el dict de resultado con valores por defecto (estado OK)."""
     return {
-        "archivo":    file_path.name,
-        "ruta":       str(file_path),
-        "estado":     ESTADO_OK,
+        "archivo": file_path.name,
+        "ruta": str(file_path),
+        "estado": ESTADO_OK,
         "tipo_error": TIPO_NINGUNO,
-        "paginas":    None,
+        "paginas": None,
         "tamanio_kb": round(size / 1024, 1),
-        "md5":        "",    # se rellena si --hash está activo
-        "error":      "",
+        "md5": "",  # se rellena si --hash está activo
+        "error": "",
     }
 
 
@@ -196,11 +192,10 @@ def detect_format_error(file_path: Path) -> Optional[tuple[str, str]]:
     if b"%PDF-" not in head:
         # Intentamos leer un poco más por si el archivo tiene bytes basura al inicio
         return TIPO_CABECERA, (
-            f"No se encontró la cabecera '%PDF-' en los primeros "
-            f"{HEADER_SCAN_BYTES} bytes"
+            f"No se encontró la cabecera '%PDF-' en los primeros {HEADER_SCAN_BYTES} bytes"
         )
 
-    return None   # parece un PDF estructuralmente válido en cabecera
+    return None  # parece un PDF estructuralmente válido en cabecera
 
 
 def detect_eof_warning(file_path: Path) -> Optional[str]:
@@ -218,7 +213,7 @@ def detect_eof_warning(file_path: Path) -> Optional[str]:
             fh.seek(max(file_size - TAIL_SCAN_BYTES, 0))
             tail = fh.read()
     except OSError:
-        return None   # no bloqueamos; el error de IO ya se capturó antes
+        return None  # no bloqueamos; el error de IO ya se capturó antes
 
     if b"%%EOF" not in tail:
         return (
@@ -231,8 +226,9 @@ def detect_eof_warning(file_path: Path) -> Optional[str]:
 # ─────────────────────────────────────────────
 # INSPECCIÓN PRINCIPAL DE CADA PDF
 # ─────────────────────────────────────────────
-def check_pdf(file_path: Path, *, deep: bool = False,
-              compute_hash: bool = False, strict_eof: bool = False) -> dict:
+def check_pdf(
+    file_path: Path, *, deep: bool = False, compute_hash: bool = False, strict_eof: bool = False
+) -> dict:
     """
     Inspecciona un archivo PDF y devuelve un dict con su estado.
 
@@ -250,14 +246,14 @@ def check_pdf(file_path: Path, *, deep: bool = False,
         size = file_path.stat().st_size
     except OSError as exc:
         return {
-            "archivo":    file_path.name,
-            "ruta":       str(file_path),
-            "estado":     ESTADO_CORRUPTO,
+            "archivo": file_path.name,
+            "ruta": str(file_path),
+            "estado": ESTADO_CORRUPTO,
             "tipo_error": TIPO_IO,
-            "paginas":    None,
+            "paginas": None,
             "tamanio_kb": 0.0,
-            "md5":        "N/A",
-            "error":      f"No se pudo acceder al archivo: {exc}",
+            "md5": "N/A",
+            "error": f"No se pudo acceder al archivo: {exc}",
         }
 
     result = _make_result(file_path, size)
@@ -267,18 +263,18 @@ def check_pdf(file_path: Path, *, deep: bool = False,
 
     # ── 2. Archivo vacío ─────────────────────────────────────────────────────
     if size == 0:
-        result["estado"]     = ESTADO_CORRUPTO
+        result["estado"] = ESTADO_CORRUPTO
         result["tipo_error"] = TIPO_VACIO
-        result["error"]      = "Archivo vacío (0 bytes)"
+        result["error"] = "Archivo vacío (0 bytes)"
         return result
 
     # ── 3. Firma binaria / cabecera PDF ──────────────────────────────────────
     format_hit = detect_format_error(file_path)
     if format_hit:
         tipo, msg = format_hit
-        result["estado"]     = ESTADO_CORRUPTO
+        result["estado"] = ESTADO_CORRUPTO
         result["tipo_error"] = tipo
-        result["error"]      = msg
+        result["error"] = msg
         return result
 
     # ── 4. Lectura con pypdf ─────────────────────────────────────────────────
@@ -289,13 +285,13 @@ def check_pdf(file_path: Path, *, deep: bool = False,
             # PDF cifrado sin contraseña → CIFRADO (no es corrupción)
             if reader.is_encrypted:
                 try:
-                    reader.decrypt("")          # intenta contraseña vacía
-                    if reader.is_encrypted:     # sigue cifrado
+                    reader.decrypt("")  # intenta contraseña vacía
+                    if reader.is_encrypted:  # sigue cifrado
                         raise pypdf.errors.FileNotDecryptedError("contraseña requerida")
                 except pypdf.errors.FileNotDecryptedError:
-                    result["estado"]     = ESTADO_CIFRADO
+                    result["estado"] = ESTADO_CIFRADO
                     result["tipo_error"] = TIPO_CIFRADO
-                    result["error"]      = "PDF protegido con contraseña"
+                    result["error"] = "PDF protegido con contraseña"
                     return result
 
             num_pages = len(reader.pages)
@@ -320,47 +316,47 @@ def check_pdf(file_path: Path, *, deep: bool = False,
 
             if bad_pages:
                 scope = "todas las páginas" if deep else "la página 1"
-                result["estado"]     = ESTADO_ADVERTENCIA
+                result["estado"] = ESTADO_ADVERTENCIA
                 result["tipo_error"] = TIPO_TEXTO if not deep else TIPO_PAGINA
-                result["error"]      = (
+                result["error"] = (
                     f"No se pudo extraer texto de {scope}: "
                     + ", ".join(bad_pages[:5])
                     + (" …" if len(bad_pages) > 5 else "")
                 )
 
     except pypdf.errors.FileNotDecryptedError as exc:
-        result["estado"]     = ESTADO_CIFRADO
+        result["estado"] = ESTADO_CIFRADO
         result["tipo_error"] = TIPO_CIFRADO
-        result["error"]      = f"PDF cifrado: {exc}"
+        result["error"] = f"PDF cifrado: {exc}"
 
     except pypdf.errors.PyPdfError as exc:
-        result["estado"]     = ESTADO_CORRUPTO
+        result["estado"] = ESTADO_CORRUPTO
         result["tipo_error"] = TIPO_PYPDF
-        result["error"]      = f"{type(exc).__name__}: {exc}"
+        result["error"] = f"{type(exc).__name__}: {exc}"
 
     except (OSError, ValueError) as exc:
-        result["estado"]     = ESTADO_CORRUPTO
+        result["estado"] = ESTADO_CORRUPTO
         result["tipo_error"] = TIPO_IO
-        result["error"]      = f"Error de E/S: {exc}"
+        result["error"] = f"Error de E/S: {exc}"
 
     except (RuntimeError, MemoryError, RecursionError) as exc:
-        result["estado"]     = ESTADO_CORRUPTO
+        result["estado"] = ESTADO_CORRUPTO
         result["tipo_error"] = TIPO_INESPERADO
-        result["error"]      = f"{type(exc).__name__}: {exc}"
+        result["error"] = f"{type(exc).__name__}: {exc}"
 
     # ── 5. Verificación de %%EOF (solo si el archivo abrió sin errores graves)
     if result["estado"] in (ESTADO_OK, ESTADO_ADVERTENCIA):
         eof_msg = detect_eof_warning(file_path)
         if eof_msg:
             if strict_eof:
-                result["estado"]     = ESTADO_CORRUPTO
+                result["estado"] = ESTADO_CORRUPTO
                 result["tipo_error"] = TIPO_EOF
-                result["error"]      = eof_msg
+                result["error"] = eof_msg
             elif result["estado"] == ESTADO_OK:
                 # Solo degradar a ADVERTENCIA si no había ya otro aviso
-                result["estado"]     = ESTADO_ADVERTENCIA
+                result["estado"] = ESTADO_ADVERTENCIA
                 result["tipo_error"] = TIPO_EOF
-                result["error"]      = eof_msg
+                result["error"] = eof_msg
 
     return result
 
@@ -380,10 +376,7 @@ def scan_folder(
 
     Devuelve lista de dicts ordenada: CORRUPTO → CIFRADO → ADVERTENCIA → OK.
     """
-    pdf_files = sorted(
-        p for p in folder.rglob("*")
-        if p.is_file() and p.suffix.lower() == ".pdf"
-    )
+    pdf_files = sorted(p for p in folder.rglob("*") if p.is_file() and p.suffix.lower() == ".pdf")
     total = len(pdf_files)
 
     if total == 0:
@@ -447,10 +440,10 @@ def scan_folder(
 # ─────────────────────────────────────────────
 def print_report(results: list) -> None:
     """Imprime resumen y detalle de corruptos, cifrados y advertencias."""
-    corruptos    = [r for r in results if r["estado"] == ESTADO_CORRUPTO]
-    cifrados     = [r for r in results if r["estado"] == ESTADO_CIFRADO]
+    corruptos = [r for r in results if r["estado"] == ESTADO_CORRUPTO]
+    cifrados = [r for r in results if r["estado"] == ESTADO_CIFRADO]
     advertencias = [r for r in results if r["estado"] == ESTADO_ADVERTENCIA]
-    ok           = [r for r in results if r["estado"] == ESTADO_OK]
+    ok = [r for r in results if r["estado"] == ESTADO_OK]
 
     print("=" * 70)
     print("  RESUMEN DEL ESCANEO DE PDFs")
@@ -475,11 +468,11 @@ def print_report(results: list) -> None:
     if corruptos:
         print("\n❌  ARCHIVOS CORRUPTOS (requieren re-descarga):")
         print(f"  {'#':<4} {'Archivo':<42} {'KB':>8}  {'Tipo':<22}  Error")
-        print(f"  {'─'*4} {'─'*42} {'─'*8}  {'─'*22}  {'─'*35}")
+        print(f"  {'─' * 4} {'─' * 42} {'─' * 8}  {'─' * 22}  {'─' * 35}")
         for i, r in enumerate(corruptos, 1):
             nombre = r["archivo"][:41]
-            tipo   = r["tipo_error"][:21]
-            error  = r["error"][:60]
+            tipo = r["tipo_error"][:21]
+            error = r["error"][:60]
             print(f"  {i:<4} {nombre:<42} {r['tamanio_kb']:>8.1f}  {tipo:<22}  {error}")
 
     if cifrados:
@@ -555,12 +548,14 @@ def main() -> None:
         help=f"Carpeta a escanear (default: {DEFAULT_SCAN_FOLDER})",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         default=DEFAULT_OUTPUT,
         help=f"Archivo CSV de salida (default: {DEFAULT_OUTPUT})",
     )
     parser.add_argument(
-        "--workers", "-w",
+        "--workers",
+        "-w",
         type=int,
         default=DEFAULT_WORKERS,
         help=f"Hilos paralelos (default: {DEFAULT_WORKERS}; rango: 1–32)",

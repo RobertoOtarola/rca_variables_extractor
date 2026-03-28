@@ -16,7 +16,7 @@ def get_logger(name: str = "rca_extractor", log_file: Path | None = None) -> log
     """
     logger = logging.getLogger(name)
 
-    if logger.handlers:          # evitar duplicar handlers en reimports
+    if logger.handlers:  # evitar duplicar handlers en reimports
         return logger
 
     logger.setLevel(logging.DEBUG)

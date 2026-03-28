@@ -20,23 +20,28 @@ if not GEMINI_API_KEY:
 
 # ── Modelo ───────────────────────────────────────────────────────────────────
 DEFAULT_MODEL: str = "gemini-2.5-flash"
-GEMINI_MODEL: str  = os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
-TEMPERATURE: float      = float(os.getenv("TEMPERATURE", "0"))
-MAX_RETRIES: int        = int(os.getenv("MAX_RETRIES", "8"))
-RETRY_BASE_DELAY: float = float(os.getenv("RETRY_BASE_DELAY", "65.0"))  # segundos — piso para 429 free tier
-INTER_PDF_COOLDOWN: int = int(os.getenv("INTER_PDF_COOLDOWN", "15"))    # segundos entre PDFs
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
+TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0"))
+MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "8"))
+RETRY_BASE_DELAY: float = float(
+    os.getenv("RETRY_BASE_DELAY", "65.0")
+)  # segundos — piso para 429 free tier
+INTER_PDF_COOLDOWN: int = int(os.getenv("INTER_PDF_COOLDOWN", "15"))  # segundos entre PDFs
 
 # ── Rutas ────────────────────────────────────────────────────────────────────
-BASE_DIR:        Path = Path(__file__).parent
-PDF_FOLDER:      Path = BASE_DIR / os.getenv("PDF_FOLDER", "rcas")
-OUTPUT_FILE:     Path = BASE_DIR / os.getenv("OUTPUT_FILE", "rca_results.xlsx")
-VARIABLES_FILE:  Path = BASE_DIR / os.getenv("VARIABLES_FILE", "seia-variables.xlsx")
-CHECKPOINT_FILE: Path = BASE_DIR / os.getenv("CHECKPOINT_FILE", "checkpoints/checkpoint.json")
-LOG_FILE:        Path = BASE_DIR / os.getenv("LOG_FILE", "logs/extractor.log")
-PROMPT_FILE:     Path = BASE_DIR / "prompts" / "extraction_prompt.md"
+PROJECT_ROOT: Path = Path(__file__).parent.parent.parent
+PDF_FOLDER: Path = PROJECT_ROOT / os.getenv("PDF_FOLDER", "data/raw")
+DATA_DIR: Path = PROJECT_ROOT / "data" / "processed"
+DB_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR}/rca_data.db")
+
+OUTPUT_FILE: Path = DATA_DIR / os.getenv("OUTPUT_FILE", "results.xlsx")
+VARIABLES_FILE: Path = PROJECT_ROOT / os.getenv("VARIABLES_FILE", "seia-variables.xlsx")
+CHECKPOINT_FILE: Path = PROJECT_ROOT / os.getenv("CHECKPOINT_FILE", "checkpoints/checkpoint.json")
+LOG_FILE: Path = PROJECT_ROOT / os.getenv("LOG_FILE", "logs/extractor.log")
+PROMPT_FILE: Path = PROJECT_ROOT / "prompts" / "extraction_prompt.md"
 
 # ── Procesamiento ─────────────────────────────────────────────────────────────
-MAX_WORKERS: int = int(os.getenv("MAX_WORKERS", "1"))   # >1 habilita concurrencia
+MAX_WORKERS: int = int(os.getenv("MAX_WORKERS", "1"))  # >1 habilita concurrencia
 
 # ── Columna del Excel de variables ───────────────────────────────────────────
 VARIABLES_COLUMN: str = os.getenv("VARIABLES_COLUMN", "Variable Clave")

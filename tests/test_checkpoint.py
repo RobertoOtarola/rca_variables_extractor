@@ -6,7 +6,7 @@ import json
 import pytest
 from pathlib import Path
 
-from checkpoint import Checkpoint
+from rca_extractor.utils.checkpoint import Checkpoint
 
 
 @pytest.fixture

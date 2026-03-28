@@ -17,7 +17,7 @@ log = logging.getLogger("rca_extractor")
 
 
 class Checkpoint:
-    STATUS_OK    = "ok"
+    STATUS_OK = "ok"
     STATUS_ERROR = "error"
 
     def __init__(self, path: Path):
@@ -66,6 +66,6 @@ class Checkpoint:
         return [f for f in all_files if not self.is_done(f.name)]
 
     def summary(self) -> dict:
-        ok    = sum(1 for v in self._data.values() if v["status"] == self.STATUS_OK)
+        ok = sum(1 for v in self._data.values() if v["status"] == self.STATUS_OK)
         error = sum(1 for v in self._data.values() if v["status"] == self.STATUS_ERROR)
         return {"total": len(self._data), "ok": ok, "error": error}

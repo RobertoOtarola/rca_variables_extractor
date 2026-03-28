@@ -8,8 +8,8 @@ Uso:
 import pytest
 from pathlib import Path
 
-from prompt_builder import load_variables, build_prompt, expected_keys, _to_snake_key
-from output_validator import parse_and_validate
+from rca_extractor.utils.prompt_builder import load_variables, build_prompt, expected_keys, _to_snake_key
+from rca_extractor.utils.output_validator import parse_and_validate
 
 
 # ── _to_snake_key ─────────────────────────────────────────────────────────────

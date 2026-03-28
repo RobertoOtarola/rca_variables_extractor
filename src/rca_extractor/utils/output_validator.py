@@ -14,6 +14,7 @@ import logging
 
 try:
     from json_repair import repair_json
+
     _HAS_JSON_REPAIR = True
 except ImportError:
     _HAS_JSON_REPAIR = False
@@ -41,7 +42,7 @@ def extract_json_block(text: str) -> str:
         elif ch == "}":
             depth -= 1
             if depth == 0:
-                return text[start: i + 1]
+                return text[start : i + 1]
 
     return "{}"
 
@@ -78,8 +79,7 @@ def parse_and_validate(raw_text: str, keys: list[str]) -> dict:
                 data = None
         else:
             log.warning(
-                "JSON invalido y json-repair no instalado. "
-                "Ejecuta: pip install json-repair"
+                "JSON invalido y json-repair no instalado. Ejecuta: pip install json-repair"
             )
 
     if data is None:

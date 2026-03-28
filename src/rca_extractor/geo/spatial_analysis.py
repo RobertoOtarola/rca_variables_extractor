@@ -16,13 +16,13 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Point
 
-from geo.coord_parser import parse_utm, UTMPoint
+from rca_extractor.geo.coord_parser import parse_utm, UTMPoint
 
 log = logging.getLogger("rca_extractor")
 
 COORD_COL = "coordenadas_utm_geograficas_punto_representativo"
-WGS84     = "EPSG:4326"
-UTM19S    = "EPSG:32719"
+WGS84 = "EPSG:4326"
+UTM19S = "EPSG:32719"
 
 # ── Normalización de nombres de región ───────────────────────────────────────
 # Mapea variantes textuales → nombre canónico oficial
@@ -30,32 +30,32 @@ _REGION_ALIASES: dict[str, str] = {
     # O'Higgins — múltiples variantes en RCAs
     "libertador general bernardo o'higgins": "O'Higgins",
     "libertador general bernardo o’higgins": "O'Higgins",
-    "libertador bernardo o'higgins":         "O'Higgins",
-    "libertador bernardo o’higgins":    "O'Higgins",
-    "libertador gral. bernardo o'higgins":   "O'Higgins",
-    "o'higgins":                             "O'Higgins",
-    "o’higgins":                       "O'Higgins",
+    "libertador bernardo o'higgins": "O'Higgins",
+    "libertador bernardo o’higgins": "O'Higgins",
+    "libertador gral. bernardo o'higgins": "O'Higgins",
+    "o'higgins": "O'Higgins",
+    "o’higgins": "O'Higgins",
     # Metropolitana
-    "metropolitana de santiago":             "Metropolitana",
-    "metropolitana":                         "Metropolitana",
-    "región metropolitana de santiago":      "Metropolitana",
-    "región metropolitana":                  "Metropolitana",
+    "metropolitana de santiago": "Metropolitana",
+    "metropolitana": "Metropolitana",
+    "región metropolitana de santiago": "Metropolitana",
+    "región metropolitana": "Metropolitana",
     # Magallanes
-    "magallanes y la antártica chilena":     "Magallanes",
-    "magallanes y de la antártica chilena":  "Magallanes",
+    "magallanes y la antártica chilena": "Magallanes",
+    "magallanes y de la antártica chilena": "Magallanes",
     # Biobío
-    "biobío":                                "Biobío",
-    "bío bío":                               "Biobío",
-    "bio-bío":                               "Biobío",
+    "biobío": "Biobío",
+    "bío bío": "Biobío",
+    "bio-bío": "Biobío",
     # Aysén
     "aysén del general carlos ibáñez del campo": "Aysén",
-    "aysén del gral. carlos ibáñez del campo":    "Aysén",
-    "aysen":                                 "Aysén",
+    "aysén del gral. carlos ibáñez del campo": "Aysén",
+    "aysen": "Aysén",
     # Araucanía
-    "la araucanía":                          "La Araucanía",
-    "araucanía":                             "La Araucanía",
-    # Valparaíso  
-    "región valparaíso":                     "Valparaíso",
+    "la araucanía": "La Araucanía",
+    "araucanía": "La Araucanía",
+    # Valparaíso
+    "región valparaíso": "Valparaíso",
 }
 
 _REGION_RE = re.compile(r"Región\s+(?:(?:de(?:l)?|del)\s+)?([^,]+)", re.I)
@@ -73,6 +73,7 @@ def _normalize_region(raw: str) -> str:
 
 
 # ── GeoDataFrame ─────────────────────────────────────────────────────────────
+
 
 def build_geodataframe(df: pd.DataFrame) -> gpd.GeoDataFrame:
     """
@@ -98,24 +99,36 @@ def build_geodataframe(df: pd.DataFrame) -> gpd.GeoDataFrame:
         base["region_norm"] = _normalize_region(str(row.get("region_provincia_y_comuna", "")))
 
         if pt:
-            results.append({
-                **base,
-                "lon": pt.lon, "lat": pt.lat,
-                "utm_easting": pt.easting, "utm_northing": pt.northing,
-                "utm_zone": pt.zone, "coord_method": pt.method,
-                "coord_parsed": True, "datum_warning": pt.datum_warning if pt.datum_warning else None,
-                "geometry": Point(pt.lon, pt.lat),
-            })
+            results.append(
+                {
+                    **base,
+                    "lon": pt.lon,
+                    "lat": pt.lat,
+                    "utm_easting": pt.easting,
+                    "utm_northing": pt.northing,
+                    "utm_zone": pt.zone,
+                    "coord_method": pt.method,
+                    "coord_parsed": True,
+                    "datum_warning": pt.datum_warning if pt.datum_warning else None,
+                    "geometry": Point(pt.lon, pt.lat),
+                }
+            )
             parsed += 1
         else:
-            results.append({
-                **base,
-                "lon": None, "lat": None,
-                "utm_easting": None, "utm_northing": None,
-                "utm_zone": None, "coord_method": None,
-                "coord_parsed": False, "datum_warning": None,
-                "geometry": None,
-            })
+            results.append(
+                {
+                    **base,
+                    "lon": None,
+                    "lat": None,
+                    "utm_easting": None,
+                    "utm_northing": None,
+                    "utm_zone": None,
+                    "coord_method": None,
+                    "coord_parsed": False,
+                    "datum_warning": None,
+                    "geometry": None,
+                }
+            )
             failed += 1
 
     log.info("Coordenadas parseadas: %d | No parseadas: %d", parsed, failed)
@@ -123,6 +136,7 @@ def build_geodataframe(df: pd.DataFrame) -> gpd.GeoDataFrame:
 
 
 # ── Áreas protegidas ──────────────────────────────────────────────────────────
+
 
 def load_protected_areas(shapefile_path: str | Path) -> gpd.GeoDataFrame:
     path = Path(shapefile_path)
@@ -153,9 +167,9 @@ def intersect_protected(
     Usa UTM19S para cálculos de distancia en metros.
     """
     proj = projects.copy()
-    proj["inside_protected_area"]    = False
-    proj["near_protected_area"]      = False
-    proj["protected_area_name"]      = None
+    proj["inside_protected_area"] = False
+    proj["near_protected_area"] = False
+    proj["protected_area_name"] = None
     proj["distance_to_protected_km"] = None
 
     has_geom = proj[proj["geometry"].notna() & proj["coord_parsed"]]
@@ -169,24 +183,29 @@ def intersect_protected(
 
     for idx, row in proj_utm.iterrows():
         pt = row.geometry
-        if pt is None: continue
+        if pt is None:
+            continue
         dists = prot_utm.geometry.distance(pt)
         min_d = dists.min()
         closest = dists.idxmin()
         dist_km = round(min_d / 1000, 3)
         proj.at[idx, "distance_to_protected_km"] = dist_km
-        proj.at[idx, "inside_protected_area"]    = (min_d == 0)
-        proj.at[idx, "near_protected_area"]      = (min_d <= buffer_m)
+        proj.at[idx, "inside_protected_area"] = min_d == 0
+        proj.at[idx, "near_protected_area"] = min_d <= buffer_m
         if name_col and name_col in prot_utm.columns:
             proj.at[idx, "protected_area_name"] = prot_utm.at[closest, name_col]
 
-    log.info("Dentro: %d | Cerca (<%gkm): %d",
-             proj["inside_protected_area"].sum(), buffer_km,
-             proj["near_protected_area"].sum())
+    log.info(
+        "Dentro: %d | Cerca (<%gkm): %d",
+        proj["inside_protected_area"].sum(),
+        buffer_km,
+        proj["near_protected_area"].sum(),
+    )
     return proj
 
 
 # ── Resumen regional ──────────────────────────────────────────────────────────
+
 
 def region_summary(gdf: gpd.GeoDataFrame) -> pd.DataFrame:
     """
@@ -200,24 +219,34 @@ def region_summary(gdf: gpd.GeoDataFrame) -> pd.DataFrame:
     if "region_norm" not in df.columns:
         df["region_norm"] = df["region_provincia_y_comuna"].apply(_normalize_region)
 
-    agg = df.groupby("region_norm").agg(
-        n_proyectos          = ("archivo", "count"),
-        potencia_total_mw    = ("potencia_nominal_bruta_mw", "sum"),
-        potencia_media_mw    = ("potencia_nominal_bruta_mw", "mean"),
-        superficie_total_ha  = ("superficie_total_intervenida_ha", "sum"),
-        vida_util_media      = ("vida_util_anos", "mean"),
-        # Fix: usar valores post-normalización ('FV' no 'Fotovoltaica')
-        n_fotovoltaica       = ("tipo_de_generacion_eolica_fv_csp",
-                                lambda x: x.str.contains(r"FV|[Ff]otovoltaica", na=False).sum()),
-        n_eolica             = ("tipo_de_generacion_eolica_fv_csp",
-                                lambda x: x.str.contains(r"Eólica|Eolica", na=False).sum()),
-        n_georreferenciados  = ("coord_parsed", "sum"),
-        n_datum_warnings     = ("datum_warning",
-                                lambda x: x.notna().sum() if "datum_warning" in df.columns else 0),
-    ).reset_index().rename(columns={"region_norm": "region"})
+    agg = (
+        df.groupby("region_norm")
+        .agg(
+            n_proyectos=("archivo", "count"),
+            potencia_total_mw=("potencia_nominal_bruta_mw", "sum"),
+            potencia_media_mw=("potencia_nominal_bruta_mw", "mean"),
+            superficie_total_ha=("superficie_total_intervenida_ha", "sum"),
+            vida_util_media=("vida_util_anos", "mean"),
+            # Fix: usar valores post-normalización ('FV' no 'Fotovoltaica')
+            n_fotovoltaica=(
+                "tipo_de_generacion_eolica_fv_csp",
+                lambda x: x.str.contains(r"FV|[Ff]otovoltaica", na=False).sum(),
+            ),
+            n_eolica=(
+                "tipo_de_generacion_eolica_fv_csp",
+                lambda x: x.str.contains(r"Eólica|Eolica", na=False).sum(),
+            ),
+            n_georreferenciados=("coord_parsed", "sum"),
+            n_datum_warnings=(
+                "datum_warning",
+                lambda x: x.notna().sum() if "datum_warning" in df.columns else 0,
+            ),
+        )
+        .reset_index()
+        .rename(columns={"region_norm": "region"})
+    )
 
-    for col in ["potencia_total_mw", "potencia_media_mw",
-                "superficie_total_ha", "vida_util_media"]:
+    for col in ["potencia_total_mw", "potencia_media_mw", "superficie_total_ha", "vida_util_media"]:
         agg[col] = agg[col].round(2)
 
     return agg.sort_values("n_proyectos", ascending=False).reset_index(drop=True)
