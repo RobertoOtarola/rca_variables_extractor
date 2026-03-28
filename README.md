@@ -2,7 +2,7 @@
 
 **Extractor automático de variables técnicas y ambientales desde Resoluciones de Calificación Ambiental (RCA) del Sistema de Evaluación de Impacto Ambiental (SEIA) de Chile.**
 
-Utiliza la API de Google Gemini para procesar nativamente PDFs completos (texto y escaneados) y extraer datos estructurados en JSON. Incluye un pipeline completo de post-procesamiento, georreferenciación, ACV y visualización.
+Utiliza la API de Google Gemini para procesar nativamente PDFs completos (texto y escaneados) y extraer datos estructurados en JSON. Incluye un pipeline completo de post-procesamiento, georreferenciación, Análisis de Ciclo de Vida (ACV) y visualización.
 
 ---
 
@@ -10,7 +10,7 @@ Utiliza la API de Google Gemini para procesar nativamente PDFs completos (texto 
 
 | Fase | Estado | Descripción |
 |------|--------|-------------|
-| 🤖 **1 · Extracción LLM** | ✅ | Gemini 2.0 Flash — 430/432 PDFs procesados (99.5%) |
+| 🤖 **1 · Extracción LLM** | ✅ | Gemini 2.5 Flash — 430/432 PDFs procesados (99.5%) |
 | 🗄️ **2 · Post-procesamiento** | ✅ | Normalización, validación y persistencia en **SQLite** |
 | 🌍 **3 · Geoespacial** | ✅ | Parser UTM multi-formato → WGS84 y GeoJSON |
 | ⚗️ **4 · ACV + API + Dashboard** | ✅ | Análisis de Ciclo de Vida, FastAPI y Streamlit (Nativos SQL) |
