@@ -12,11 +12,11 @@ Flujo:
 import logging
 from pathlib import Path
 
-from gemini_client import GeminiClient
-from prompt_builder import build_prompt, expected_keys
-from output_validator import parse_and_validate
-from pdf_utils import detect_scanned
-import config
+from rca_extractor.core.gemini_client import GeminiClient
+from rca_extractor.utils.prompt_builder import build_prompt, expected_keys
+from rca_extractor.utils.output_validator import parse_and_validate
+from rca_extractor.utils.pdf_utils import detect_scanned
+from rca_extractor import config
 
 log = logging.getLogger("rca_extractor")
 

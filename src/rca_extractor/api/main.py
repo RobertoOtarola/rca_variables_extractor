@@ -23,10 +23,7 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-_BASE = Path(__file__).parent.parent
-sys.path.insert(0, str(_BASE))
-
-from lca.calculator import calculate  # noqa: E402
+from rca_extractor.lca.calculator import calculate  # noqa: E402
 
 app = FastAPI(
     title="RCA Extractor API",

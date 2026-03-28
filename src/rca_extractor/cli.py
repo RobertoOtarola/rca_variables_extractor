@@ -18,11 +18,11 @@ from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 
-import config
-from logger import get_logger
-from checkpoint import Checkpoint
-from pdf_pipeline import RCAExtractor
-from prompt_builder import load_variables
+from rca_extractor import config
+from rca_extractor.utils.logger import get_logger
+from rca_extractor.utils.checkpoint import Checkpoint
+from rca_extractor.core.pdf_pipeline import RCAExtractor
+from rca_extractor.utils.prompt_builder import load_variables
 
 # ── Logger global ─────────────────────────────────────────────────────────────
 log = get_logger(log_file=config.LOG_FILE)

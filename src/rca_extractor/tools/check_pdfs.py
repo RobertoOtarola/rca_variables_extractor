@@ -50,10 +50,7 @@ except ModuleNotFoundError:
 # Silencia los avisos de pypdf sobre PDFs dañados; el detalle va al CSV.
 logging.getLogger("pypdf").setLevel(logging.ERROR)
 
-# Importar lógica de detección de escaneados desde módulo compartido
-import sys as _sys, pathlib as _pathlib
-_sys.path.insert(0, str(_pathlib.Path(__file__).parent.parent))
-from pdf_utils import is_scanned_pdf, SCANNED_CHARS_THRESHOLD, SCANNED_SAMPLE_PAGES
+from rca_extractor.utils.pdf_utils import is_scanned_pdf, SCANNED_CHARS_THRESHOLD, SCANNED_SAMPLE_PAGES
 
 
 # ─────────────────────────────────────────────
