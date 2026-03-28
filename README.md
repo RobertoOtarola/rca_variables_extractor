@@ -1,4 +1,4 @@
-# 🔍☑️ RCA Extractor
+# 🔍☑️ RCA Variables Extractor
 
 **Extractor automático de variables técnicas y ambientales desde Resoluciones de Calificación Ambiental (RCA) del Sistema de Evaluación de Impacto Ambiental (SEIA) de Chile.**
 
