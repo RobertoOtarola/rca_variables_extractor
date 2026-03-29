@@ -60,7 +60,9 @@ share/python-wheels/
 NOTES.md
 GITHUB_PROJECTS.md
 implementation_plan*.md
+scratchpad_*.md
 task_*.md
 walkthrough_*.md
 chatgpt*.md
 claude*.md
+gemini*.md
