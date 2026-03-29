@@ -10,7 +10,6 @@ venv/
 # Testing y Dependencies
 .coverage
 htmlcov/
-uv.lock
 
 # Entorno
 .env
