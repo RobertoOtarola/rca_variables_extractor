@@ -3,72 +3,98 @@ rca_scraper.py — Herramienta para descargar documentos (RCA e ICE) desde el SE
 Soporta descarga individual por id_expediente o masiva desde archivos CSV/Excel/ODS.
 """
 
-import os
 import time
 import argparse
 import re
+import random
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
 from pathlib import Path
 from urllib.parse import urljoin
 
+from rca_extractor.config import (
+    SCRAPED_DIR,
+    SCRAPER_DELAY,
+    SCRAPER_CHECKPOINT,
+    SCRAPER_LOG_FILE,
+)
+from rca_extractor.utils.logger import get_logger
+from rca_extractor.utils.checkpoint import Checkpoint
+
+log = get_logger("rca_scraper", log_file=SCRAPER_LOG_FILE)
+
 # --- CONFIGURACIÓN ---
 BASE_URL = "https://seia.sea.gob.cl"
+# Endpoint XHR interno del SEIA: devuelve la tabla de documentos de un expediente
+# sin cargar toda la ficha. Más liviano pero no documentado públicamente.
+# Alternativa si cambia: /expediente/expedientesEvaluacion.php?modo=ficha&id_expediente={}
 FICHA_URL = f"{BASE_URL}/expediente/xhr_documentos.php?id_expediente={{}}"
 DOC_VIEWER_URL = f"{BASE_URL}/documentos/documento.php?idDocumento={{}}"
 XML_DOWNLOAD_URL = f"{BASE_URL}/documentos/getXmlFile?docId={{}}"
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+# User-Agent identificable (Investigación CEDEUS UC)
+HEADERS = {
+    "User-Agent": (
+        "RCA-Extractor/0.6 (Investigación ERNC — CEDEUS UC; "
+        "https://github.com/RobertoOtarola/rca_variables_extractor)"
+    )
+}
 
-SCRAPED_DIR = Path("data/raw/scraped")
-SESSION = requests.Session()
+
+def create_session() -> requests.Session:
+    """Crea una sesión de requests configurada con los headers base."""
+    s = requests.Session()
+    s.headers.update(HEADERS)
+    return s
 
 
-def get_project_html(url: str) -> str:
+def get_project_html(url: str, session: requests.Session | None = None) -> str:
     """Obtiene el HTML de una página del proyecto."""
-    res = SESSION.get(url, headers=HEADERS, timeout=30)
+    s = session or create_session()
+    res = s.get(url, timeout=30)
     res.encoding = res.apparent_encoding # SEIA suele usar ISO-8859-1
     res.raise_for_status()
     return res.text
 
 
 def find_doc_links(html: str, pattern: str) -> list[str]:
-    """Busca enlaces a documentos que coincidan con el patrón (RCA o ICE)."""
-    # Usar regex directamente sobre el HTML para ser más robustos
-    all_links = re.findall(r'href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL)
-    links = []
-    for href, text in all_links:
-        # Limpiamos el texto (BS4 es bueno para esto incluso en fragmentos)
-        clean_text = BeautifulSoup(text, "html.parser").get_text().strip()
-        if re.search(pattern, clean_text, re.IGNORECASE):
-            links.append(href)
-    return links
+    """Busca hrefs de <a> cuyo texto visible coincida con el patrón (RCA o ICE)."""
+    soup = BeautifulSoup(html, "html.parser")
+    return [
+        a["href"]
+        for a in soup.find_all("a", href=True)
+        if re.search(pattern, a.get_text(strip=True), re.IGNORECASE)
+    ]
 
 
-def download_file(url: str, output_path: Path, referer: str = None) -> bool:
-    """Descarga un archivo verificando que no sea HTML."""
-    try:
-        headers = HEADERS.copy()
-        if referer:
-            headers["Referer"] = referer
-            
-        print(f"      - Descargando: {url}")
-        res = SESSION.get(url, headers=headers, stream=True, timeout=30)
-        res.raise_for_status()
-        
-        content_type = res.headers.get("Content-Type", "").lower()
-        if "text/html" in content_type:
-            return False
+def download_file(
+    url: str,
+    output_path: Path,
+    referer: str | None = None,
+    session: requests.Session | None = None,
+    min_bytes: int = 512,
+) -> bool:
+    """Descarga url -> output_path. Retorna False si el servidor devuelve HTML.
+    Propaga HTTPError y otras excepciones al caller."""
+    s = session or create_session()
+    headers = {"Referer": referer} if referer else {}
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "wb") as f:
-            for chunk in res.iter_content(chunk_size=8192):
-                f.write(chunk)
-        return True
-    except Exception as e:
-        print(f"      ⚠️  Error descargando {url}: {e}")
+    log.debug("Descargando: %s", url)
+    response = s.get(url, headers=headers, stream=True, timeout=30)
+    response.raise_for_status()
+
+    content_type = response.headers.get("Content-Type", "").lower()
+    if "text/html" in content_type:
         return False
+
+    content = response.content
+    if len(content) < min_bytes:
+        raise ValueError(f"Respuesta demasiado pequeña ({len(content)} bytes) para {url}")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(content)
+    return True
 
 
 def get_doc_id_from_viewer(viewer_url: str) -> str | None:
@@ -77,89 +103,102 @@ def get_doc_id_from_viewer(viewer_url: str) -> str | None:
     return match.group(1) if match else None
 
 
-def process_id(id_expediente: str, doc_patterns: dict[str, str], delay: float = 2.0):
+def process_id(
+    id_expediente: str,
+    doc_patterns: dict[str, str],
+    session: requests.Session | None = None,
+) -> None:
     """Procesa un id_expediente buscando y descargando los documentos solicitados."""
-    print(f"🔍 Procesando id_expediente: {id_expediente}...")
+    log.info("Procesando id_expediente: %s", id_expediente)
+    s = session or create_session()
     
     try:
-        # Obtenemos HTML de la tabla de documentos vía XHR
-        html = get_project_html(FICHA_URL.format(id_expediente))
+        html = get_project_html(FICHA_URL.format(id_expediente), session=s)
         target_dir = SCRAPED_DIR / id_expediente
         
         for doc_type, pattern in doc_patterns.items():
             all_links = find_doc_links(html, pattern)
             
             if not all_links:
-                print(f"    ❌ No se encontró {doc_type}")
+                log.warning("    ❌ No se encontró %s", doc_type)
                 continue
             
-            # Intentamos con el último link encontrado (suele ser el más reciente/definitivo)
             found = False
             # Usamos dict.fromkeys para de-duplicar manteniendo el orden
-            for link in reversed(list(dict.fromkeys(all_links))):
+            links_to_try = reversed(list(dict.fromkeys(all_links)))
+            
+            for link in links_to_try:
                 full_url = urljoin(BASE_URL, link)
                 
                 # Caso 1: Link directo a PDF
                 if full_url.lower().endswith(".pdf"):
-                    pdf_path = target_dir / f"{doc_type}.pdf"
-                    # El referer es la tabla de documentos
-                    if download_file(full_url, pdf_path, referer=FICHA_URL.format(id_expediente)):
-                        print(f"    ✅ {doc_type} descendado (PDF Directo)")
+                    out_path = target_dir / f"{doc_type}.pdf"
+                    if download_file(full_url, out_path, referer=FICHA_URL.format(id_expediente), session=s):
+                        log.info("    ✅ %s descargado (PDF Directo)", doc_type)
                         found = True
                         break
 
                 # Caso 2: Link a visor /documentos/documento.php
                 elif "documento.php" in full_url:
-                    print(f"      - Explorando visor: {full_url}")
+                    log.debug("      - Explorando visor: %s", full_url)
                     try:
-                        inner_html = get_project_html(full_url)
-                        # Buscamos cualquier link a .pdf o .xml dentro del visor
-                        # A menudo los botones de descarga tienen texto como "Descargar" o el nombre del archivo
+                        inner_html = get_project_html(full_url, session=s)
                         inner_links = find_doc_links(inner_html, r"\.pdf|\.xml|descargar|archivo")
                         
                         for i_link in inner_links:
-                            # Usamos full_url (el visor) como base para resolver links relativos
                             i_full_url = urljoin(full_url, i_link)
                             ext = "pdf" if ".pdf" in i_full_url.lower() else "xml"
                             out_path = target_dir / f"{doc_type}.{ext}"
                             
-                            if download_file(i_full_url, out_path, referer=full_url):
-                                print(f"    ✅ {doc_type} descendado (desde visor: {ext})")
+                            if download_file(i_full_url, out_path, referer=full_url, session=s):
+                                log.info("    ✅ %s descargado (desde visor: %s)", doc_type, ext)
                                 found = True
                                 break
-                        if found: break
+                        if found:
+                            break
                     except Exception as e:
-                        print(f"      ⚠️  Error en visor {full_url}: {e}")
+                        log.warning("      ⚠️  Error en visor %s: %s", full_url, e)
 
-                if not found:
-                    # Último recurso: intentar el XML directo si tenemos el ID
-                    doc_id = get_doc_id_from_viewer(full_url)
+            if not found:
+                # Caso 3: Fallback XML — solo si no se encontró PDF arriba
+                log.debug("      - Intentando fallback XML para %s", doc_type)
+                for link in reversed(list(dict.fromkeys(all_links))):
+                    doc_id = get_doc_id_from_viewer(urljoin(BASE_URL, link))
                     if doc_id:
                         xml_url = XML_DOWNLOAD_URL.format(doc_id)
                         xml_path = target_dir / f"{doc_type}.xml"
-                        # El referer es el visor
-                        if download_file(xml_url, xml_path, referer=full_url):
-                            print(f"    ✅ {doc_type} descargado (XML Directo)")
+                        if download_file(xml_url, xml_path, referer=urljoin(BASE_URL, link), session=s):
+                            log.info("    ✅ %s descargado (XML Directo)", doc_type)
                             found = True
                             break
             
             if not found:
-                print(f"    ❌ Falló la descarga de {doc_type}")
+                log.error("    ❌ Falló la descarga de %s", doc_type)
             
-            time.sleep(delay) # Delay entre tipos de documentos del mismo proyecto
-
     except Exception as e:
-        print(f"    💥 Error procesando {id_expediente}: {e}")
+        log.error("    💥 Error procesando %s: %s", id_expediente, e)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Scraper de documentos RCA/ICE desde SEIA.")
     parser.add_argument("--id", help="ID de expediente individual")
     parser.add_argument("--input", help="Archivo (CSV/XLSX/ODS) con lista de IDs")
-    parser.add_argument("--delay", type=float, default=2.0, help="Segundos entre peticiones (default: 2.0)")
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=SCRAPER_DELAY,
+        help=f"Segundos base entre peticiones (default: {SCRAPER_DELAY})",
+    )
     parser.add_argument("--ice", action="store_true", help="Descargar también el ICE")
-    
+    parser.add_argument(
+        "--force", action="store_true", help="Ignorar checkpoint y re-descargar todo"
+    )
+
     args = parser.parse_args()
+
+    # ── Preparativos ───────────────────────────────────────────────────────
+    checkpoint = Checkpoint(SCRAPER_CHECKPOINT)
+    session = create_session()
 
     doc_patterns = {"RCA": r"RCA|Resoluci[oó]n de Calificaci[oó]n Ambiental"}
     if args.ice:
@@ -171,9 +210,9 @@ def main():
     elif args.input:
         path = Path(args.input)
         if not path.exists():
-            print(f"❌ Archivo no encontrado: {args.input}")
+            log.error("Archivo no encontrado: %s", args.input)
             return
-            
+
         ext = path.suffix.lower()
         if ext == ".csv":
             df = pd.read_csv(path)
@@ -182,26 +221,41 @@ def main():
         elif ext == ".ods":
             df = pd.read_excel(path, engine="odf")
         else:
-            print(f"❌ Formato no soportado: {ext}")
+            log.error("Formato no soportado: %s", ext)
             return
-            
+
         if "id_expediente" not in df.columns:
-            print(f"❌ Columna 'id_expediente' no encontrada en {args.input}")
+            log.error("Columna 'id_expediente' no encontrada en %s", args.input)
             return
-            
+
         ids = df["id_expediente"].dropna().astype(str).tolist()
 
     if not ids:
-        print("💡 Usa --id o --input para especificar qué descargar.")
+        log.info("💡 Usa --id o --input para especificar qué descargar.")
         return
 
-    print(f"🚀 Iniciando descarga de {len(ids)} expedientes...")
-    for idx, id_exp in enumerate(ids):
-        process_id(id_exp, doc_patterns, delay=args.delay)
-        if idx < len(ids) - 1:
-            time.sleep(args.delay)
+    log.info("🚀 Iniciando descarga de %d expedientes...", len(ids))
 
-    print("✨ Proceso finalizado.")
+    for idx, id_exp in enumerate(ids):
+        # ── Checkpoint ─────────────────────────────────────────────────────
+        if not args.force and checkpoint.is_done(id_exp):
+            log.info("Saltando %s (ya procesado)", id_exp)
+            continue
+
+        try:
+            process_id(id_exp, doc_patterns, session=session)
+            checkpoint.mark_ok(id_exp)
+        except Exception as exc:
+            log.error("Fallo procesando %s: %s", id_exp, exc)
+            checkpoint.mark_error(id_exp, str(exc))
+
+        # ── Delay con Jitter ───────────────────────────────────────────────
+        if idx < len(ids) - 1:
+            actual_delay = args.delay + random.uniform(-0.5, 1.5)
+            log.debug("Esperando %.2fs...", actual_delay)
+            time.sleep(max(1.0, actual_delay))
+
+    log.info("✨ Proceso finalizado.")
 
 
 if __name__ == "__main__":

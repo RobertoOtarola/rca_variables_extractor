@@ -40,6 +40,12 @@ CHECKPOINT_FILE: Path = PROJECT_ROOT / os.getenv("CHECKPOINT_FILE", "checkpoints
 LOG_FILE: Path = PROJECT_ROOT / os.getenv("LOG_FILE", "logs/extractor.log")
 PROMPT_FILE: Path = PROJECT_ROOT / "prompts" / "extraction_prompt.md"
 
+# ── Scraper SEIA ─────────────────────────────────────────────────────────────
+SCRAPED_DIR: Path = PROJECT_ROOT / os.getenv("SCRAPED_DIR", "data/raw/scraped")
+SCRAPER_DELAY: float = float(os.getenv("SCRAPER_DELAY", "3.0"))
+SCRAPER_CHECKPOINT: Path = PROJECT_ROOT / os.getenv("SCRAPER_CHECKPOINT", "checkpoints/scraper_checkpoint.json")
+SCRAPER_LOG_FILE: Path = PROJECT_ROOT / os.getenv("SCRAPER_LOG_FILE", "logs/scraper.log")
+
 # ── Procesamiento ─────────────────────────────────────────────────────────────
 MAX_WORKERS: int = int(os.getenv("MAX_WORKERS", "1"))  # >1 habilita concurrencia
 
