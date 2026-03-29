@@ -10,7 +10,7 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 try:
     # Usamos el ID exacto que obtuvimos del listado: gemini-2.0-flash
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-flash-latest",
         contents="Hola Gemini, confirma conexión para el proyecto de extracción de RCA.",
     )
 

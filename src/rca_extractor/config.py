@@ -19,7 +19,7 @@ if not GEMINI_API_KEY:
     )
 
 # ── Modelo ───────────────────────────────────────────────────────────────────
-DEFAULT_MODEL: str = "gemini-2.5-flash"
+DEFAULT_MODEL: str = "gemini-flash-latest"
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
 TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0"))
 MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "8"))
@@ -35,7 +35,7 @@ DATA_DIR: Path = PROJECT_ROOT / "data" / "processed"
 DB_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR}/rca_data.db")
 
 OUTPUT_FILE: Path = DATA_DIR / os.getenv("OUTPUT_FILE", "results.xlsx")
-VARIABLES_FILE: Path = PROJECT_ROOT / os.getenv("VARIABLES_FILE", "seia-variables.xlsx")
+VARIABLES_FILE: Path = PROJECT_ROOT / os.getenv("VARIABLES_FILE", "data/config/seia-variables.xlsx")
 CHECKPOINT_FILE: Path = PROJECT_ROOT / os.getenv("CHECKPOINT_FILE", "checkpoints/checkpoint.json")
 LOG_FILE: Path = PROJECT_ROOT / os.getenv("LOG_FILE", "logs/extractor.log")
 PROMPT_FILE: Path = PROJECT_ROOT / "prompts" / "extraction_prompt.md"
