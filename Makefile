@@ -1,9 +1,12 @@
-.PHONY: check start-api start-dashboard test lint format
+.PHONY: install check test lint format clean start-api start-dashboard scrape
+
+install:
+	uv sync --all-extras --dev
 
 check: lint test
 
 test:
-	PYTHONPATH=src uv run pytest tests/
+	uv run pytest tests/
 
 lint:
 	uv run ruff check src/
@@ -11,6 +14,21 @@ lint:
 
 format:
 	uv run ruff format src/
+
+clean:
+	find . -type d -name "__pycache__" -exec rm -rf {} +
+	find . -type f -name "*.py[co]" -delete
+	find . -type d -name "*.egg-info" -exec rm -rf {} +
+	find . -type d -name ".pytest_cache" -exec rm -rf {} +
+	find . -type d -name ".ruff_cache" -exec rm -rf {} +
+	rm -f .coverage
+
+scrape:
+	@if [ -z "$(ID)" ]; then \
+		echo "Uso: make scrape ID=7021124"; \
+	else \
+		uv run python -m rca_extractor.tools.rca_scraper --id $(ID); \
+	fi
 
 start-api:
 	uv run uvicorn rca_extractor.api.main:app --reload

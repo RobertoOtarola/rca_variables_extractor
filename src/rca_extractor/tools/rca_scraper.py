@@ -75,22 +75,30 @@ def download_file(
     session: requests.Session | None = None,
     min_bytes: int = 512,
 ) -> bool:
-    """Descarga url -> output_path. Retorna False si el servidor devuelve HTML.
-    Propaga HTTPError y otras excepciones al caller."""
+    """Descarga url -> output_path. Retorna False si el servidor devuelve HTML error page.
+    Propaga HTTPError y otras excepciones críticas.
+    B4: Verifica el tamaño del archivo para evitar descargas corruptas.
+    """
     s = session or create_session()
     headers = {"Referer": referer} if referer else {}
 
-    log.debug("Descargando: %s", url)
+    log.debug("      - Descargando: %s", url)
     response = s.get(url, headers=headers, stream=True, timeout=30)
+    
+    # Propagar errores HTTP (403, 404, 500, etc.) para que el caller decida (B4)
     response.raise_for_status()
 
     content_type = response.headers.get("Content-Type", "").lower()
     if "text/html" in content_type:
+        log.warning("      ⚠️  El servidor devolvió HTML en lugar del archivo esperado: %s", url)
         return False
 
     content = response.content
     if len(content) < min_bytes:
-        raise ValueError(f"Respuesta demasiado pequeña ({len(content)} bytes) para {url}")
+        raise ValueError(
+            f"Respuesta demasiado pequeña ({len(content)} bytes). "
+            f"Posible archivo corrupto o página de error en: {url}"
+        )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(content)
@@ -124,10 +132,8 @@ def process_id(
                 continue
             
             found = False
-            # Usamos dict.fromkeys para de-duplicar manteniendo el orden
-            links_to_try = reversed(list(dict.fromkeys(all_links)))
-            
-            for link in links_to_try:
+            # B2: Estructura for...else para flujo de fallback limpio
+            for link in reversed(list(dict.fromkeys(all_links))):
                 full_url = urljoin(BASE_URL, link)
                 
                 # Caso 1: Link directo a PDF
@@ -158,22 +164,21 @@ def process_id(
                             break
                     except Exception as e:
                         log.warning("      ⚠️  Error en visor %s: %s", full_url, e)
-
-            if not found:
-                # Caso 3: Fallback XML — solo si no se encontró PDF arriba
-                log.debug("      - Intentando fallback XML para %s", doc_type)
+            else:
+                # Caso 3: Fallback XML — Solo si el loop anterior agotó links sin éxito (B2)
+                log.debug("      - No se halló PDF disponible. Intentando fallback XML...")
                 for link in reversed(list(dict.fromkeys(all_links))):
                     doc_id = get_doc_id_from_viewer(urljoin(BASE_URL, link))
                     if doc_id:
                         xml_url = XML_DOWNLOAD_URL.format(doc_id)
                         xml_path = target_dir / f"{doc_type}.xml"
                         if download_file(xml_url, xml_path, referer=urljoin(BASE_URL, link), session=s):
-                            log.info("    ✅ %s descargado (XML Directo)", doc_type)
+                            log.info("    ✅ %s descargado (XML Fallback)", doc_type)
                             found = True
                             break
             
             if not found:
-                log.error("    ❌ Falló la descarga de %s", doc_type)
+                log.error("    ❌ Agotadas todas las opciones para %s", doc_type)
             
     except Exception as e:
         log.error("    💥 Error procesando %s: %s", id_expediente, e)

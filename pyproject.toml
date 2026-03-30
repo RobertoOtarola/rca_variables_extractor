@@ -10,31 +10,31 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "google-genai>=1.0.0,<2.0.0",
-    "pandas>=2.0.0",
-    "openpyxl>=3.1.0",
-    "python-dotenv>=1.0.0",
-    "pypdf>=4.0.0",
-    "json-repair>=0.30.0",
-    "tqdm>=4.66.0",
-    "pymupdf>=1.24.0",
-    "sqlalchemy>=2.0.48",
-    "geopandas>=0.14.0",
-    "shapely>=2.0.0",
-    "pyproj>=3.6.0",
+    "pandas>=2.2.0,<3.0.0",
+    "openpyxl>=3.1.0,<4.0.0",
+    "python-dotenv>=1.0.1,<2.0.0",
+    "pypdf>=4.0.0,<5.0.0",
+    "json-repair>=0.30.0,<1.0.0",
+    "tqdm>=4.66.0,<5.0.0",
+    "pymupdf>=1.24.0,<2.0.0",
+    "sqlalchemy>=2.0.0,<3.0.0",
+    "geopandas>=0.14.0,<1.0.0",
+    "shapely>=2.0.0,<3.0.0",
+    "pyproj>=3.6.0,<4.0.0",
     "fastapi>=0.115.0,<1.0.0",
     "uvicorn[standard]>=0.32.0,<1.0.0",
     "streamlit>=1.40.0,<2.0.0",
     "plotly>=5.24.0,<6.0.0",
-    "requests>=2.31.0",
-    "beautifulsoup4>=4.12.0"
+    "requests>=2.31.0,<3.0.0",
+    "beautifulsoup4>=4.12.0,<5.0.0"
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",
-    "pytest-cov",
-    "ruff",
-    "mypy"
+    "pytest>=8.0.0,<9.0.0",
+    "pytest-cov>=4.1.0,<6.0.0",
+    "ruff>=0.3.0,<1.0.0",
+    "mypy>=1.9.0,<2.0.0"
 ]
 
 [project.scripts]
@@ -49,7 +49,7 @@ line-length = 100
 target-version = "py311"
 
 [tool.pytest.ini_options]
-addopts = "-v --cov=src --cov-report=term-missing"
+addopts = "-v --cov=rca_extractor --cov-report=term-missing"
 testpaths = ["tests"]
 
 [tool.mypy]

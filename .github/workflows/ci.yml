@@ -2,31 +2,30 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main, master ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ main, master ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Instalando uv
-        uses: astral-sh/setup-uv@v2
-        with:
-          version: "latest"
-          enable-cache: true
-      - name: Setting up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Set up Python
+        run: uv python install 3.11
+
       - name: Install dependencies
-        run: uv pip install --system -e ".[dev]"
-      - name: Check typing with MyPy
-        run: mypy src/rca_extractor/core/
-      - name: Check code formatting with Ruff
-        run: ruff check src/
-      - name: Run Pytest
-        env:
-          GEMINI_API_KEY: dummy_key_for_testing
-        run: PYTHONPATH=src uv run pytest tests/
+        run: uv sync --all-extras --dev
+
+      - name: Run Ruff Check
+        run: uv run ruff check src/
+
+      - name: Run Ruff Format Check
+        run: uv run ruff format --check src/
+
+      - name: Run Tests
+        run: uv run pytest tests/
