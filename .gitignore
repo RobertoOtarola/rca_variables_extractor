@@ -57,6 +57,7 @@ pip-delete-this-directory.txt
 share/python-wheels/
 
 # Notas de desarrollo
+tdd/
 NOTES.md
 GITHUB_PROJECTS.md
 implementation_plan*.md
