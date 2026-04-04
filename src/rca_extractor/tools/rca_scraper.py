@@ -59,13 +59,21 @@ def get_project_html(url: str, session: requests.Session | None = None) -> str:
 
 
 def find_doc_links(html: str, pattern: str) -> list[str]:
-    """Busca hrefs de <a> cuyo texto visible coincida con el patrón (RCA o ICE)."""
+    """
+    Busca hrefs de <a> cuyo texto visible coincida con el patrón (RCA o ICE).
+    B3: Migración completa a BeautifulSoup para parsing HTML robusto.
+    """
     soup = BeautifulSoup(html, "html.parser")
-    return [
-        a["href"]
-        for a in soup.find_all("a", href=True)
-        if re.search(pattern, a.get_text(strip=True), re.IGNORECASE)
-    ]
+    links = []
+    for a in soup.find_all("a", href=True):
+        text = a.get_text(strip=True)
+        if re.search(pattern, text, re.IGNORECASE):
+            href = a["href"]
+            if isinstance(href, str):
+                links.append(href)
+            elif isinstance(href, list):
+                links.append(href[0])
+    return links
 
 
 def download_file(
@@ -73,35 +81,38 @@ def download_file(
     output_path: Path,
     referer: str | None = None,
     session: requests.Session | None = None,
-    min_bytes: int = 512,
+    min_bytes: int = 2048,  # Aumentado para PDFs mínimos realistas
 ) -> bool:
-    """Descarga url -> output_path. Retorna False si el servidor devuelve HTML error page.
-    Propaga HTTPError y otras excepciones críticas.
-    B4: Verifica el tamaño del archivo para evitar descargas corruptas.
+    """Descarga url -> output_path con streaming.
+    Retorna False si el servidor devuelve HTML error page.
+    B4: Verifica el tamaño del archivo y propaga HTTPError.
     """
     s = session or create_session()
     headers = {"Referer": referer} if referer else {}
 
     log.debug("      - Descargando: %s", url)
-    response = s.get(url, headers=headers, stream=True, timeout=30)
-    
-    # Propagar errores HTTP (403, 404, 500, etc.) para que el caller decida (B4)
-    response.raise_for_status()
+    with s.get(url, headers=headers, stream=True, timeout=30) as r:
+        r.raise_for_status()
 
-    content_type = response.headers.get("Content-Type", "").lower()
-    if "text/html" in content_type:
-        log.warning("      ⚠️  El servidor devolvió HTML en lugar del archivo esperado: %s", url)
-        return False
+        content_type = r.headers.get("Content-Type", "").lower()
+        if "text/html" in content_type:
+            log.warning("      ⚠️  Servidor devolvió HTML: %s", url)
+            return False
 
-    content = response.content
-    if len(content) < min_bytes:
-        raise ValueError(
-            f"Respuesta demasiado pequeña ({len(content)} bytes). "
-            f"Posible archivo corrupto o página de error en: {url}"
-        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Escritura en bloques para eficiencia en archivos grandes
+        with open(output_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_bytes(content)
+    # Validación post-descarga
+    size = output_path.stat().st_size
+    if size < min_bytes:
+        output_path.unlink(missing_ok=True)
+        raise ValueError(f"Archivo corrupto o demasiado pequeño ({size} bytes): {url}")
+
     return True
 
 

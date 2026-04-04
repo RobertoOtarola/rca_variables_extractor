@@ -8,7 +8,7 @@ build/
 venv/
 
 # Testing y Dependencies
-.coverage
+.coverage*
 htmlcov/
 
 # Entorno

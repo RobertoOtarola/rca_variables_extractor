@@ -40,8 +40,8 @@ def test_find_doc_links_no_match(sample_html):
 def test_download_file_rejects_html(tmp_path):
     mock_session = MagicMock()
     mock_response = MagicMock()
+    mock_response.__enter__.return_value = mock_response
     mock_response.headers = {"Content-Type": "text/html"}
-    mock_response.content = b"<html>Sesion expirada</html>"
     mock_session.get.return_value = mock_response
     
     output_path = tmp_path / "test.pdf"
@@ -53,8 +53,10 @@ def test_download_file_rejects_html(tmp_path):
 def test_download_file_valid_pdf(tmp_path):
     mock_session = MagicMock()
     mock_response = MagicMock()
+    mock_response.__enter__.return_value = mock_response
     mock_response.headers = {"Content-Type": "application/pdf"}
-    mock_response.content = b"%PDF-1.4 dummy content" * 100 # > 512 bytes
+    content = b"%PDF-1.4 dummy content" * 100 # > 2048 bytes
+    mock_response.iter_content.return_value = [content]
     mock_session.get.return_value = mock_response
     
     output_path = tmp_path / "valid.pdf"
@@ -62,22 +64,24 @@ def test_download_file_valid_pdf(tmp_path):
     
     assert result is True
     assert output_path.exists()
-    assert output_path.read_bytes() == mock_response.content
+    assert output_path.read_bytes() == content
 
 def test_download_file_too_small(tmp_path):
     mock_session = MagicMock()
     mock_response = MagicMock()
+    mock_response.__enter__.return_value = mock_response
     mock_response.headers = {"Content-Type": "application/pdf"}
-    mock_response.content = b"too small"
+    mock_response.iter_content.return_value = [b"too small"]
     mock_session.get.return_value = mock_response
     
     output_path = tmp_path / "small.pdf"
-    with pytest.raises(ValueError, match="Respuesta demasiado pequeña"):
+    with pytest.raises(ValueError, match="Archivo corrupto o demasiado pequeño"):
         download_file("https://example.com/small.pdf", output_path, session=mock_session)
 
 def test_download_file_propagates_http_error():
     mock_session = MagicMock()
     mock_response = MagicMock()
+    mock_response.__enter__.return_value = mock_response
     mock_response.raise_for_status.side_effect = requests.HTTPError("403 Forbidden")
     mock_session.get.return_value = mock_response
     

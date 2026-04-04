@@ -19,10 +19,13 @@ from sqlalchemy import (
     Integer,
     Text,
 )
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 log = logging.getLogger("rca_extractor")
-Base = declarative_base()
+
+
+class Base(DeclarativeBase):
+    pass
 
 
 class Project(Base):
@@ -101,10 +104,12 @@ def upsert_projects(
             if k in model_cols
         }
         arch = data.get("archivo", "")
-        data["outlier_flags"] = outlier_counts.get(arch, 0)
-        data["range_flags"] = range_counts.get(arch, 0)
+        outlier_f = int(outlier_counts.get(arch, 0))
+        range_f = int(range_counts.get(arch, 0))
+        data["outlier_flags"] = outlier_f
+        data["range_flags"] = range_f
         data["validation_status"] = (
-            "has_issues" if (data["outlier_flags"] + data["range_flags"]) > 0 else "ok"
+            "has_issues" if (outlier_f + range_f) > 0 else "ok"
         )
         session.merge(Project(**data))
         count += 1

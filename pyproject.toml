@@ -51,6 +51,7 @@ target-version = "py311"
 [tool.pytest.ini_options]
 addopts = "-v --cov=rca_extractor --cov-report=term-missing"
 testpaths = ["tests"]
+pythonpath = ["src"]
 
 [tool.mypy]
 ignore_missing_imports = true

@@ -10,7 +10,7 @@ test:
 
 lint:
 	uv run ruff check src/
-	uv run mypy src/rca_extractor/core/
+	uv run mypy src/
 
 format:
 	uv run ruff format src/
