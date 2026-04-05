@@ -1,6 +1,6 @@
 # 🔍☑️ RCA Variables Extractor
 
-**Extractor automático de variables técnicas y ambientales desde Resoluciones de Calificación Ambiental (RCA) del Sistema de Evaluación de Impacto Ambiental (SEIA) de Chile.**
+**Herramienta para extraer automáticamente variables técnicas y ambientales desde Resoluciones de Calificación Ambiental (RCA) del Sistema de Evaluación de Impacto Ambiental (SEIA) de Chile.**
 
 Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos escaneados— y extrae datos estructurados en JSON. El pipeline cubre adquisición de documentos, extracción LLM, post-procesamiento, georreferenciación, análisis de ciclo de vida y visualización interactiva.
 
@@ -20,28 +20,26 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 | 🗄️ **2 · Post-procesamiento** | ✅ `v0.2.0` | Normalización, validación y persistencia en SQLite |
 | 🌍 **3 · Geoespacial** | ✅ `v0.3.0` | Parser UTM multi-formato → WGS84 y GeoJSON |
 | ⚗️ **4 · ACV + API + Dashboard** | ✅ `v0.4.0` | LCA, FastAPI y Streamlit con acceso nativo a SQLite |
-| 📦 **5 · Arquitectura** | ✅ `v0.5.0` | Paquete `src/`, CI/CD, `uv.lock`, Makefile |
+| 📦 **5 · Arquitectura** | ✅ `v0.5.0` | Paquete `src/`, CI/CD, lockfile, Makefile |
 | 🚀 **6 · Scraper refactorizado** | ✅ `v0.6.0` | BS4, inyección de sesión, checkpoint, logging, streaming |
 
 ---
 
 ## Instalación
 
-**Prerrequisitos:** Python ≥ 3.11 · [uv](https://github.com/astral-sh/uv) (recomendado) o pip
+**Prerrequisitos:** Python ≥ 3.11
 
 ```bash
 git clone https://github.com/RobertoOtarola/rca_variables_extractor.git
 cd rca_variables_extractor
 
-# Con uv (reproducible con lockfile)
-uv sync --all-extras --dev
-
-# Con pip (modo editable)
+# Modo editable con pip
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e "."        # instalación base
+pip install -e ".[dev]"   # incluye pytest, ruff, mypy
 
 # Configuración
-cp .env.example .env   # Añadir GEMINI_API_KEY
+cp .env.example .env      # añadir GEMINI_API_KEY
 ```
 
 ---
@@ -70,14 +68,23 @@ streamlit run src/rca_extractor/dashboard/app.py    # Dashboard → http://local
 ```
 rca_variables_extractor/
 ├── pyproject.toml                  # Dependencias y configuración del paquete
-├── Makefile                        # make check | make start-api | make scrape ID=...
-├── uv.lock                         # Lockfile determinístico
+├── requirements.txt                # Dependencias legacy (referencia; usar pyproject.toml)
+├── seia-variables.xlsx             # Schema de variables a extraer
 ├── .env.example                    # Template de variables de entorno
-├── .github/
-│   └── workflows/
-│       └── ci.yml                  # CI: ruff + mypy + pytest
+├── .gitignore
+├── LICENSE                         # GPL-3.0
 │
-└── src/rca_extractor/              # Package root
+├── prompts/
+│   └── extraction_prompt.md        # Prompt con formatos estrictos por variable
+│
+├── tests/
+│   ├── conftest.py                 # Fixture: GEMINI_API_KEY=dummy
+│   ├── test_checkpoint.py
+│   ├── test_output_validator.py
+│   ├── test_prompt_builder.py
+│   └── test_rca_scraper.py
+│
+└── src/rca_extractor/              # Package root (pip install -e .)
     ├── cli.py                      # Entrypoint del extractor LLM
     ├── config.py                   # Configuración centralizada (env vars)
     │
@@ -93,22 +100,26 @@ rca_variables_extractor/
     │   └── prompt_builder.py       # Construcción de prompts desde schema XLSX
     │
     ├── tools/
-    │   ├── check_pdfs.py           # Auditoría del corpus PDF
-    │   └── rca_scraper.py          # Scraper SEIA: RCA + ICE (PDF/XML)
+    │   ├── check_gitignore.py      # Verifica que archivos locales estén bien ignorados por Git
+    │   ├── check_pdfs.py           # Auditoría del corpus: corruptos, cifrados, escaneados
+    │   ├── list_models.py          # Lista los modelos Gemini disponibles para la API Key
+    │   ├── rca_scraper.py          # Scraper SEIA: descarga RCA + ICE (PDF/XML)
+    │   └── snippet_api_key.py      # Verifica que la API Key de Gemini funciona
     │
     ├── post_processing/
-    │   ├── normalizer.py           # Strings → valores tipados (formato chileno)
-    │   ├── validator.py            # Rangos científicos + detección de outliers
-    │   └── db_storage.py           # ORM SQLAlchemy → SQLite / PostgreSQL
+    │   ├── db_storage.py           # ORM SQLAlchemy → SQLite / PostgreSQL
+    │   ├── normalizer.py           # Strings → valores tipados (formato numérico chileno)
+    │   ├── run.py                  # CLI: python -m rca_extractor.post_processing.run
+    │   └── validator.py            # Rangos científicos + detección de outliers
     │
     ├── geo/
     │   ├── coord_parser.py         # UTM multi-formato → WGS84
     │   └── spatial_analysis.py     # Intersección con áreas protegidas SNASPE
     │
     ├── lca/
-    │   ├── factors.py              # Factores IPCC/NREL/IEA por tecnología
+    │   ├── benchmarks.py           # Clasificación LOW / NORMAL / HIGH
     │   ├── calculator.py           # Cálculo de GEI, agua y energía de vida útil
-    │   └── benchmarks.py           # Clasificación LOW / NORMAL / HIGH
+    │   └── factors.py              # Factores IPCC/NREL/IEA por tecnología
     │
     ├── api/
     │   └── main.py                 # FastAPI: /health /stats /projects /lca
@@ -116,8 +127,8 @@ rca_variables_extractor/
     └── dashboard/
         ├── app.py                  # Streamlit + pd.read_sql
         └── components/
-            ├── maps.py             # Mapas Plotly/Mapbox
-            └── charts.py           # Histogramas, scatter, box plots
+            ├── charts.py           # Histogramas, scatter, box plots
+            └── maps.py             # Mapas Plotly/Mapbox
 ```
 
 ---
@@ -135,9 +146,6 @@ rca-scraper --id 7021124 --ice
 
 # Lote desde archivo (columna requerida: id_expediente)
 rca-scraper --input data/expedientes.csv --delay 4.0 --ice
-
-# Shortcut via Makefile
-make scrape ID=7021124
 ```
 
 **Variables de entorno del scraper** (en `.env`):
@@ -148,18 +156,18 @@ make scrape ID=7021124
 | `SCRAPER_DELAY` | `3.0` | Segundos base entre requests |
 | `SCRAPER_CHECKPOINT` | `checkpoints/scraper_checkpoint.json` | Archivo de checkpoint |
 
-Los documentos descargados se guardan en `data/raw/scraped/{id_expediente}/RCA.pdf` (o `.xml` para ICE).
+Los documentos se guardan en `data/raw/scraped/{id_expediente}/RCA.pdf` (o `.xml` para ICE).
 
 ---
 
 ## Extractor LLM (`cli.py`)
 
 ```bash
-# Extracción completa — estrategia de 2 pasadas (recomendada)
+# Estrategia de 2 pasadas (recomendada para lotes grandes)
 rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
   --workers 1 --cooldown 15 --max-retries 2
 
-# Segunda pasada — solo los fallidos
+# Segunda pasada — solo los fallidos (el checkpoint omite los exitosos)
 rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
   --workers 1 --cooldown 15 --max-retries 5
 ```
@@ -168,7 +176,7 @@ rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx
 |--------|---------|-------------|
 | `--pdf-folder` | `rcas/` | Carpeta con PDFs de entrada |
 | `--output` | `rca_results.xlsx` | Archivo Excel de salida |
-| `--workers` | `1` | Paralelismo — **no usar > 1** (no thread-safe) |
+| `--workers` | `1` | Paralelismo — **no usar > 1** (no thread-safe aún) |
 | `--model` | `gemini-2.5-flash` | Modelo de Gemini |
 | `--cooldown` | `15` | Segundos entre PDFs |
 | `--max-retries` | `8` | Reintentos por PDF |
@@ -180,26 +188,23 @@ rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx
 ## Calidad y Tests
 
 ```bash
-# Suite completa (ruff + mypy + pytest)
-make check
+# Tests con cobertura
+PYTHONPATH=src pytest tests/ --cov=rca_extractor --cov-report=term-missing
 
-# Solo tests con cobertura
-uv run pytest tests/ --cov=rca_extractor --cov-report=term-missing
+# Linting
+ruff check src/
 
-# Solo linting
-uv run ruff check src/
-
-# Solo tipos
-uv run mypy src/rca_extractor/core/
+# Tipado
+mypy src/rca_extractor/core/
 ```
 
-**Estado actual:** 38 tests passing · 2 skipped (requieren credenciales) · `ruff` ✅ · `mypy` ✅
+**Estado actual:** 38 tests passing · 2 skipped (requieren credenciales reales) · `ruff` ✅ · `mypy` ✅
 
 ---
 
 ## Variables de Entorno
 
-Todas las variables se configuran en `.env` (copiar desde `.env.example`):
+Copiar desde `.env.example` y completar:
 
 ```bash
 # Requerida
@@ -213,7 +218,7 @@ GEMINI_API_KEY="tu_api_key_aqui"
 # RETRY_BASE_DELAY="65.0"
 # INTER_PDF_COOLDOWN="15"
 
-# Rutas de salida
+# Rutas
 # PDF_FOLDER="data/raw"
 # OUTPUT_FILE="data/processed/results.xlsx"
 # CHECKPOINT_FILE="checkpoints/checkpoint.json"
@@ -229,7 +234,7 @@ GEMINI_API_KEY="tu_api_key_aqui"
 
 ## Variables Extraídas
 
-Definidas en `data/config/seia-variables.xlsx`. El prompt en `prompts/extraction_prompt.md` especifica el formato exacto.
+Definidas en `seia-variables.xlsx`. El prompt en `prompts/extraction_prompt.md` especifica el formato exacto de cada una.
 
 | Variable | Cobertura | Formato |
 |----------|-----------|---------|
@@ -248,7 +253,7 @@ Definidas en `data/config/seia-variables.xlsx`. El prompt en `prompts/extraction
 | `proximidad_y_superposicion_con_areas_protegidas` | 99.8% | String ≤ 200 chars |
 | `caracteristicas_del_generador` | 100% | Texto descriptivo |
 | `tasas_de_mortalidad_de_aves_murcielagos` | 3.7% | String o `"N/A"` |
-| `escaneado` | 100% | `"sí"` / `"no"` (metadato) |
+| `escaneado` | 100% | `"sí"` / `"no"` (metadato del pipeline) |
 
 ---
 
