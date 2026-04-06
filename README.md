@@ -1,4 +1,4 @@
-# 🔍☑️ RCA Variables Extractor v6
+# 🔍☑️ RCA Variables Extractor v7
 
 **Herramienta para extraer automáticamente variables técnicas y ambientales desde Resoluciones de Calificación Ambiental (RCA) del Sistema de Evaluación de Impacto Ambiental (SEIA) de Chile.**
 
@@ -22,18 +22,23 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 | ⚗️ **4 · ACV + API + Dashboard** | ✅ `v0.4.0` | LCA, FastAPI y Streamlit con acceso nativo a SQLite |
 | 📦 **5 · Arquitectura** | ✅ `v0.5.0` | Paquete `src/`, CI/CD, lockfile, Makefile |
 | 🚀 **6 · Scraper refactorizado** | ✅ `v0.6.0` | BS4, inyección de sesión, checkpoint, logging, streaming |
+| 🔐 **7 · Auditoría y Concurrencia** | ✅ `v0.7.0` | Thread-safety (`--workers > 1`), soporte nativo `uv` y Code Review |
 
 ---
 
 ## Instalación
 
-**Prerrequisitos:** Python ≥ 3.11
+**Prerrequisitos:** Python ≥ 3.11 (o la herramienta [uv](https://github.com/astral-sh/uv))
 
 ```bash
 git clone https://github.com/RobertoOtarola/rca_variables_extractor.git
 cd rca_variables_extractor
 
-# Modo editable con pip
+# Opción A: Instalación ultrarrápida con uv (Recomendado)
+uv sync                 # lee el uv.lock y prepara el entorno .venv al instante
+source .venv/bin/activate
+
+# Opción B: Modo tradicional con pip
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e "."        # instalación base
 pip install -e ".[dev]"   # incluye pytest, ruff, mypy
@@ -176,7 +181,7 @@ rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx
 |--------|---------|-------------|
 | `--pdf-folder` | `rcas/` | Carpeta con PDFs de entrada |
 | `--output` | `rca_results.xlsx` | Archivo Excel de salida |
-| `--workers` | `1` | Paralelismo — **no usar > 1** (no thread-safe aún) |
+| `--workers` | `1` | Paralelismo — **> 1 es seguro** (escritura con bloqueo transaccional) |
 | `--model` | `gemini-2.5-flash` | Modelo de Gemini |
 | `--cooldown` | `15` | Segundos entre PDFs |
 | `--max-retries` | `8` | Reintentos por PDF |

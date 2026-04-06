@@ -11,6 +11,7 @@ Opciones avanzadas:
 import argparse
 import sys
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -188,6 +189,8 @@ def main() -> int:
     results: list[dict] = list(existing_results)
     stats = {"ok": 0, "error": 0}
     t0 = time.time()
+    
+    write_lock = threading.Lock()
 
     def _flush(results: list[dict]) -> None:
         """Guarda el Excel de forma progresiva."""
@@ -231,14 +234,16 @@ def main() -> int:
                 for future in as_completed(futures):
                     name, data, err = future.result()
                     if data:
-                        results.append(data)
-                        checkpoint.mark_ok(name)
-                        stats["ok"] += 1
-                        _flush(results)
+                        with write_lock:
+                            results.append(data)
+                            checkpoint.mark_ok(name)
+                            stats["ok"] += 1
+                            _flush(results)
                     else:
-                        log.error("❌ %s: %s", name, err)
-                        checkpoint.mark_error(name, err or "desconocido")
-                        stats["error"] += 1
+                        with write_lock:
+                            log.error("❌ %s: %s", name, err)
+                            checkpoint.mark_error(name, err or "desconocido")
+                            stats["error"] += 1
 
                     bar.set_postfix(ok=stats["ok"], error=stats["error"], refresh=False)
                     bar.update(1)
