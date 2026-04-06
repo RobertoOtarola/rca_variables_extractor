@@ -1,4 +1,4 @@
-# 🔍☑️ RCA Variables Extractor
+# 🔍☑️ RCA Variables Extractor v6
 
 **Herramienta para extraer automáticamente variables técnicas y ambientales desde Resoluciones de Calificación Ambiental (RCA) del Sistema de Evaluación de Impacto Ambiental (SEIA) de Chile.**
 
