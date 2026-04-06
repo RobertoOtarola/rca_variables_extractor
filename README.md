@@ -53,10 +53,10 @@ cp .env.example .env      # añadir GEMINI_API_KEY
 
 ```bash
 # 1. Descargar RCAs desde el SEIA
-rca-scraper --input data/expedientes.csv --delay 4.0
+rca_scraper --input data/expedientes.csv --delay 4.0
 
 # 2. Extraer variables con Gemini
-rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx
+rca_extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx
 
 # 3. Post-procesar y persistir en BD
 python -m rca_extractor.post_processing.run --input data/processed/results.xlsx
@@ -144,13 +144,13 @@ Descarga RCAs e ICEs desde `seia.sea.gob.cl` dado un `id_expediente`. Soporta lo
 
 ```bash
 # Descarga individual (RCA)
-rca-scraper --id 7021124
+rca_scraper --id 7021124
 
 # Descarga individual (RCA + ICE)
-rca-scraper --id 7021124 --ice
+rca_scraper --id 7021124 --ice
 
 # Lote desde archivo (columna requerida: id_expediente)
-rca-scraper --input data/expedientes.csv --delay 4.0 --ice
+rca_scraper --input data/expedientes.csv --delay 4.0 --ice
 ```
 
 **Variables de entorno del scraper** (en `.env`):
@@ -169,11 +169,11 @@ Los documentos se guardan en `data/raw/scraped/{id_expediente}/RCA.pdf` (o `.xml
 
 ```bash
 # Estrategia de 2 pasadas (recomendada para lotes grandes)
-rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
+rca_extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
   --workers 1 --cooldown 15 --max-retries 2
 
 # Segunda pasada — solo los fallidos (el checkpoint omite los exitosos)
-rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
+rca_extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
   --workers 1 --cooldown 15 --max-retries 5
 ```
 
@@ -278,4 +278,4 @@ Definidas en `seia-variables.xlsx`. El prompt en `prompts/extraction_prompt.md` 
 
 ## Licencia
 
-[GPL-3.0](LICENSE) — Roberto Otárola Estrada · CEDEUS UC · 2026
+[GPL-3.0](LICENSE) — Roberto Otárola · CEDEUS UC · 2026
