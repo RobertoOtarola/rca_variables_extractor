@@ -334,4 +334,4 @@ GEMINI_API_KEY="tu_api_key_aqui"
 
 ## Licencia
 
-[GPL-3.0](LICENSE) — Roberto Otárola Estrada · CEDEUS UC · 2026
+[GPL-3.0](LICENSE) — Roberto Otárola · CEDEUS · 2026
