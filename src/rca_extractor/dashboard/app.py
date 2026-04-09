@@ -1,3 +1,5 @@
+import logging
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -8,6 +10,8 @@ from rca_extractor.post_processing.db_storage import get_engine
 from rca_extractor.config import DB_URL
 from rca_extractor.dashboard.components.charts import render_histogram, render_scatter, render_box_plot
 from rca_extractor.dashboard.components.maps import render_project_map
+
+log = logging.getLogger(__name__)
 
 # ── Sistema de Datos ──────────────────────────────────────────────────────────
 engine = get_engine(DB_URL)
@@ -51,7 +55,12 @@ def load_main() -> pd.DataFrame:
         if "region_norm" in df.columns:
             df["region"] = df["region_norm"]
         else:
-            df["region"] = df["region_provincia_y_comuna"].str.extract(r"Región\s+(?:de(?:l)?\s+)?([^,]+)")[0].str.strip()
+            df["region"] = (
+                df["region_provincia_y_comuna"]
+                .str.extract(r"Región\s+(?:de(?:l)?\s+)?([^,]+)", expand=False)
+                .str.strip()
+                .fillna("Sin región")
+            )
             
         _aliases = {
             "Libertador General Bernardo O'Higgins": "O'Higgins",
@@ -105,7 +114,8 @@ def load_geo() -> pd.DataFrame:
             "Fotovoltaica": "FV",
         })
         return gdf
-    except Exception:
+    except Exception as exc:
+        log.warning("load_geo: %s", exc)
         return pd.DataFrame()
 
 
@@ -389,8 +399,11 @@ def render_lca(df: pd.DataFrame):
 def render_map(geo_df: pd.DataFrame):
     st.subheader("🗺️ Mapa de proyectos georreferenciados")
 
-    if geo_df.empty or "lat" not in geo_df.columns:
-        st.info("Ejecuta `python -m geo.run` para generar coordenadas WGS84.")
+    if geo_df.empty:
+        st.info("No se encontraron datos geoespaciales. Ejecuta `python -m geo.run` para generar coordenadas WGS84.")
+        return
+    if "lat" not in geo_df.columns:
+        st.warning("La tabla de proyectos no contiene columnas `lat`/`lon`. Verifica que el pipeline geoespacial se haya ejecutado correctamente.")
         return
 
     map_df = geo_df.dropna(subset=["lat", "lon"]).copy()
