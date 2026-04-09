@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 from rca_extractor.lca.calculator import calculate
 from rca_extractor.post_processing.db_storage import get_engine
 from rca_extractor.config import DB_URL
+from rca_extractor.dashboard.components.charts import render_histogram, render_scatter, render_box_plot
+from rca_extractor.dashboard.components.maps import render_project_map
 
 # ── Sistema de Datos ──────────────────────────────────────────────────────────
 engine = get_engine(DB_URL)
@@ -263,10 +265,9 @@ def render_land_power(df: pd.DataFrame):
 
     with c1:
         st.markdown("**Distribución potencia nominal (MW, escala log)**")
-        plot_df = df.dropna(subset=["potencia_nominal_bruta_mw"])
-        fig = px.histogram(
-            plot_df,
-            x="potencia_nominal_bruta_mw",
+        fig = render_histogram(
+            df,
+            column="potencia_nominal_bruta_mw",
             color="tech",
             color_discrete_map=TECH_COLORS,
             nbins=45,
@@ -274,16 +275,13 @@ def render_land_power(df: pd.DataFrame):
             height=270,
             labels={"potencia_nominal_bruta_mw": "MW", "tech": "Tecnología"},
         )
-        fig.update_layout(
-            bargap=0.04, margin=dict(t=4, b=4, l=4, r=4), legend=dict(orientation="h", y=1.12)
-        )
+        fig.update_layout(legend=dict(orientation="h", y=1.12))
         st.plotly_chart(fig, use_container_width=True)
 
     with c2:
         st.markdown("**Potencia vs Intensidad uso de suelo**")
-        sc = df.dropna(subset=["potencia_nominal_bruta_mw", "intensidad_de_uso_de_suelo_ha_mw_1"])
-        fig = px.scatter(
-            sc,
+        fig = render_scatter(
+            df,
             x="potencia_nominal_bruta_mw",
             y="intensidad_de_uso_de_suelo_ha_mw_1",
             color="tech",
@@ -297,8 +295,6 @@ def render_land_power(df: pd.DataFrame):
                 "tech": "",
             },
         )
-        fig.update_traces(marker_size=5, marker_opacity=0.7)
-        fig.update_layout(margin=dict(t=4, b=4, l=4, r=4), legend=dict(orientation="h", y=1.12))
         st.plotly_chart(fig, use_container_width=True)
 
 
@@ -375,7 +371,7 @@ def render_lca(df: pd.DataFrame):
         if w_df.empty:
             st.info("Sin datos de agua en RCAs para el filtro actual.")
         else:
-            fig = px.box(
+            fig = render_box_plot(
                 w_df,
                 x="tech",
                 y="water_intensity_m3_mwh",
@@ -384,7 +380,6 @@ def render_lca(df: pd.DataFrame):
                 labels={"water_intensity_m3_mwh": "m³/MWh", "tech": ""},
                 height=260,
             )
-            fig.update_layout(showlegend=False, margin=dict(t=4, b=4, l=4, r=4))
             st.plotly_chart(fig, use_container_width=True)
 
 
@@ -399,42 +394,27 @@ def render_map(geo_df: pd.DataFrame):
         return
 
     map_df = geo_df.dropna(subset=["lat", "lon"]).copy()
-    map_df["size_px"] = map_df["potencia_nominal_bruta_mw"].clip(upper=300).fillna(10)
 
-    fig = px.scatter_mapbox(
+    fig = render_project_map(
         map_df,
-        lat="lat",
-        lon="lon",
-        color="tech",
         color_discrete_map=TECH_COLORS,
-        size="size_px",
-        size_max=18,
-        hover_name="archivo",
         hover_data={
             "potencia_nominal_bruta_mw": ":.1f",
             "region_provincia_y_comuna": True,
-            "coord_method": True,
             "lat": False,
             "lon": False,
-            "size_px": False,
         },
-        zoom=4,
-        center={"lat": -30, "lon": -70},
-        mapbox_style="carto-positron",
         labels={
             "tech": "Tecnología",
             "potencia_nominal_bruta_mw": "MW",
             "region_provincia_y_comuna": "Región/Provincia/Comuna",
-            "coord_method": "Método coord.",
         },
-        height=520,
     )
-    fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), legend=dict(orientation="h", y=-0.05))
     st.plotly_chart(fig, use_container_width=True)
 
     n_total = len(geo_df)
     n_mapped = len(map_df)
-    pct = n_mapped / n_total * 100
+    pct = n_mapped / n_total * 100 if n_total > 0 else 0
     st.caption(
         f"**{n_mapped}** proyectos georreferenciados de {n_total} totales "
         f"(**{pct:.0f}%**). El {100 - pct:.0f}% restante referencia anexos sin "

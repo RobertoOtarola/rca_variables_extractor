@@ -22,6 +22,7 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 | ⚗️ **4 · ACV + API + Dashboard** | ✅ `v0.4.0` | LCA, FastAPI y Streamlit con acceso nativo a SQLite |
 | 📦 **5 · Arquitectura** | ✅ `v0.5.0` | Paquete `src/`, CI/CD, lockfile, Makefile |
 | 🚀 **6 · Scraper refactorizado** | ✅ `v0.6.0` | BS4, inyección de sesión, checkpoint, logging, streaming |
+| 🔧 **7 · Estabilidad** | ✅ `v0.7.0` | Thread-safety en CLI, módulos LCA/Dashboard completos, geo opcional |
 
 ---
 
@@ -29,24 +30,37 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 
 **Prerrequisitos:** Python ≥ 3.11
 
+### Con `uv` (recomendado)
+
 ```bash
 git clone https://github.com/RobertoOtarola/rca_variables_extractor.git
 cd rca_variables_extractor
 
-python3 -m venv .venv && source .venv/bin/activate
+# Instalar uv si no está disponible
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Instalación base (extracción LLM, scraper, API, dashboard)
-pip install -e "."
+# Instalar entorno completo (reproducible con uv.lock)
+uv sync --dev
 
-# Con capa geoespacial (requiere GDAL instalado en el sistema)
+# Con capa geoespacial (requiere GDAL en el sistema)
 # macOS:  brew install gdal
 # Ubuntu: sudo apt-get install gdal-bin libgdal-dev
-pip install -e ".[geo]"
+uv sync --extra geo --dev
 
-# Herramientas de desarrollo (tests, linting, tipado)
-pip install -e ".[dev]"
+cp .env.example .env   # añadir GEMINI_API_KEY
+```
 
-# Configuración
+### Con `pip`
+
+```bash
+git clone https://github.com/RobertoOtarola/rca_variables_extractor.git
+cd rca_variables_extractor
+python3 -m venv .venv && source .venv/bin/activate
+
+pip install -e "."          # instalación base (sin capa geoespacial)
+pip install -e ".[geo]"     # con capa geoespacial (requiere GDAL)
+pip install -e ".[dev]"     # herramientas de desarrollo
+
 cp .env.example .env   # añadir GEMINI_API_KEY
 ```
 
@@ -75,26 +89,30 @@ streamlit run src/rca_extractor/dashboard/app.py    # Dashboard → http://local
 
 ```
 rca_variables_extractor/
-├── pyproject.toml                  # Dependencias y configuración del paquete
-├── requirements.txt                # Legacy — usar pyproject.toml
-├── seia-variables.xlsx             # Schema de variables a extraer
+├── pyproject.toml                  # Dependencias y configuración (v0.7.0)
+├── uv.lock                         # Lockfile determinístico
 ├── .env.example                    # Template de variables de entorno
 ├── .gitignore
 ├── LICENSE                         # GPL-3.0
+├── .github/
+│   └── workflows/
+│       └── ci.yml                  # CI: ruff + ruff format + mypy + pytest (con GDAL)
 │
 ├── prompts/
 │   └── extraction_prompt.md        # Prompt con formatos estrictos por variable
 │
 ├── tests/
 │   ├── conftest.py                 # Fixture: GEMINI_API_KEY=dummy
-│   ├── test_checkpoint.py          # 7 tests
-│   ├── test_output_validator.py    # 12 tests
-│   ├── test_prompt_builder.py      # 10 tests
-│   └── test_rca_scraper.py         # 6 tests (HTML fixtures locales)
-│
-└── src/rca_extractor/              # Package root (pip install -e .)
-    ├── cli.py                      # Entrypoint del extractor LLM
-    ├── config.py                   # Configuración centralizada (env vars)
+│   ├── test_benchmarks.py          # 25 tests — lca/benchmarks
+│   ├── test_checkpoint.py          # 7 tests  — utils/checkpoint
+│   ├── test_lca_calculator.py      # 16 tests — lca/calculator
+│   ├── test_output_validator.py    # 12 tests — utils/output_validator
+│   ├── test_prompt_builder.py      # 10 tests — utils/prompt_builder
+│   └── test_rca_scraper.py         # 6 tests  — tools/rca_scraper
+│                                   # Total: 76 tests + 2 skipped (requieren credenciales)
+└── src/rca_extractor/
+    ├── cli.py                      # Entrypoint extractor LLM (thread-safe con Lock desde v0.7.0)
+    ├── config.py                   # GEMINI_MODEL = "gemini-2.5-flash" (ID explícito)
     │
     ├── core/
     │   ├── gemini_client.py        # Cliente Gemini 2.5 Flash + backoff + retry
@@ -112,7 +130,7 @@ rca_variables_extractor/
     │   ├── check_pdfs.py           # Auditoría del corpus: corruptos, cifrados, escaneados
     │   ├── list_models.py          # Lista los modelos Gemini disponibles para la API Key
     │   ├── rca_scraper.py          # Scraper SEIA: RCA + ICE (PDF/XML)
-    │   └── snippet_api_key.py      # Verifica conexión con la API Key de Gemini
+    │   └── snippet_api_key.py      # Verifica conexión con Gemini y modelo activo
     │
     ├── post_processing/
     │   ├── db_storage.py           # ORM SQLAlchemy → SQLite / PostgreSQL
@@ -125,9 +143,9 @@ rca_variables_extractor/
     │   └── spatial_analysis.py     # Intersección con áreas protegidas SNASPE
     │
     ├── lca/
-    │   ├── benchmarks.py           # Clasificación LOW / NORMAL / HIGH ⚠️ stub
-    │   ├── calculator.py           # Cálculo de GEI, agua y energía de vida útil
-    │   └── factors.py              # Factores IPCC/NREL/IEA por tecnología
+    │   ├── benchmarks.py           # Clasificación LOW/NORMAL/HIGH (IPCC/NREL/Ong)
+    │   ├── calculator.py           # compute_lca() → LCAResult(ghg, water, energy)
+    │   └── factors.py              # Factores de referencia por tecnología
     │
     ├── api/
     │   └── main.py                 # FastAPI: /health /stats /projects /lca
@@ -135,11 +153,10 @@ rca_variables_extractor/
     └── dashboard/
         ├── app.py                  # Streamlit + pd.read_sql
         └── components/
-            ├── charts.py           # Histogramas, scatter, box plots ⚠️ stub
-            └── maps.py             # Mapas Plotly/Mapbox ⚠️ stub
+            ├── __init__.py
+            ├── charts.py           # render_histogram / render_scatter / render_box_plot
+            └── maps.py             # render_project_map (scatter_mapbox centrado en Chile)
 ```
-
-> ⚠️ Los módulos marcados como **stub** tienen implementación pendiente para `v0.7.0`.
 
 ---
 
@@ -148,14 +165,9 @@ rca_variables_extractor/
 Descarga RCAs e ICEs desde `seia.sea.gob.cl` dado un `id_expediente`. Soporta lotes desde CSV, XLSX u ODS.
 
 ```bash
-# Descarga individual (RCA)
-rca-scraper --id 7021124
-
-# Descarga individual (RCA + ICE)
-rca-scraper --id 7021124 --ice
-
-# Lote desde archivo (columna requerida: id_expediente)
-rca-scraper --input data/expedientes.csv --delay 4.0 --ice
+rca-scraper --id 7021124                                       # RCA individual
+rca-scraper --id 7021124 --ice                                 # RCA + ICE
+rca-scraper --input data/expedientes.csv --delay 4.0 --ice    # Lote (columna: id_expediente)
 ```
 
 **Variables de entorno del scraper** (en `.env`):
@@ -177,7 +189,6 @@ Los documentos se guardan en `data/raw/scraped/{id_expediente}/RCA.pdf` (o `.xml
 rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
   --workers 1 --cooldown 15 --max-retries 2
 
-# Segunda pasada — solo los fallidos (el checkpoint omite los exitosos)
 rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
   --workers 1 --cooldown 15 --max-retries 5
 ```
@@ -186,29 +197,54 @@ rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx
 |--------|---------|-------------|
 | `--pdf-folder` | `rcas/` | Carpeta con PDFs de entrada |
 | `--output` | `rca_results.xlsx` | Archivo Excel de salida |
-| `--workers` | `1` | Paralelismo — **no usar > 1** (no thread-safe aún) |
-| `--model` | `gemini-2.5-flash` | Modelo de Gemini |
+| `--workers` | `1` | Paralelismo — thread-safe desde v0.7.0 |
+| `--model` | `gemini-2.5-flash` | Modelo Gemini (ID explícito, no aliases) |
 | `--cooldown` | `15` | Segundos entre PDFs |
 | `--max-retries` | `8` | Reintentos por PDF |
 | `--reset` | `False` | Ignorar checkpoint existente |
 | `--dry-run` | `False` | Listar PDFs pendientes sin procesar |
+
+> **Concurrencia:** El CLI es thread-safe desde `v0.7.0`. Para lotes grandes, usa `--workers 2` o `--workers 4` ajustando `--cooldown` para no exceder la cuota de Gemini (HTTP 429).
+
+---
+
+## Módulos LCA
+
+```python
+from rca_extractor.lca.benchmarks import classify_project, classify_ghg, classify_water, classify_land
+from rca_extractor.lca.calculator import compute_lca
+
+# Clasificación de un proyecto
+result = classify_project(row)          # BenchmarkResult con ghg/water/land
+label  = classify_ghg("Fotovoltaica", 35.0)   # → "NORMAL"
+
+# Cálculo LCA
+lca = compute_lca(project_row)          # LCAResult(ghg, water, energy)
+```
+
+---
+
+## Módulos Dashboard
+
+```python
+from rca_extractor.dashboard.components.charts import render_histogram, render_scatter, render_box_plot
+from rca_extractor.dashboard.components.maps import render_project_map
+
+fig = render_histogram(df, column="potencia_nominal_bruta_mw")
+fig = render_scatter(df, x="potencia_nominal_bruta_mw", y="superficie_total_intervenida_ha")
+fig = render_box_plot(df, x="tipo_de_generacion_eolica_fv_csp", y="factor_de_planta")
+fig = render_project_map(df)   # scatter_mapbox centrado en Chile
+```
 
 ---
 
 ## Herramientas de Diagnóstico (`tools/`)
 
 ```bash
-# Verificar conexión con Gemini y confirmar el modelo activo
-python src/rca_extractor/tools/snippet_api_key.py
-
-# Listar todos los modelos Gemini disponibles para la API Key
-python src/rca_extractor/tools/list_models.py
-
-# Auditar corpus de PDFs (corruptos, cifrados, escaneados)
+python src/rca_extractor/tools/snippet_api_key.py   # Verificar Gemini + modelo activo
+python src/rca_extractor/tools/list_models.py        # Listar modelos disponibles
 python -m rca_extractor.tools.check_pdfs data/raw/scraped/ --detect-scanned
-
-# Verificar que archivos locales estén correctamente ignorados por Git
-python src/rca_extractor/tools/check_gitignore.py
+python src/rca_extractor/tools/check_gitignore.py    # Verificar .gitignore
 ```
 
 ---
@@ -216,29 +252,28 @@ python src/rca_extractor/tools/check_gitignore.py
 ## Calidad y Tests
 
 ```bash
-# Tests con cobertura
+# Con uv
+uv run pytest tests/
+uv run ruff check src/
+uv run mypy src/rca_extractor/core/
+
+# Con pip
 PYTHONPATH=src pytest tests/ --cov=rca_extractor --cov-report=term-missing
-
-# Linting
 ruff check src/
-
-# Tipado
 mypy src/rca_extractor/core/
 ```
 
-**Estado actual:** 38 tests passing · 2 skipped (requieren credenciales reales) · `ruff` ✅ · `mypy` ✅
+**Estado actual (v0.7.0):** 76 tests passing · 2 skipped · `ruff` ✅ · `mypy` ✅
 
 ---
 
 ## Variables de Entorno
 
-Copiar desde `.env.example` y completar:
-
 ```bash
 # Requerida
 GEMINI_API_KEY="tu_api_key_aqui"
 
-# Modelo Gemini — usar ID explícito (los alias no son determinísticos)
+# Modelo — usar ID explícito (los aliases no son determinísticos)
 # GEMINI_MODEL=gemini-2.5-flash
 
 # Retries y delays
@@ -262,8 +297,6 @@ GEMINI_API_KEY="tu_api_key_aqui"
 
 ## Variables Extraídas
 
-Definidas en `seia-variables.xlsx`. El prompt en `prompts/extraction_prompt.md` especifica el formato exacto.
-
 | Variable | Cobertura | Formato |
 |----------|-----------|---------|
 | `potencia_nominal_bruta_mw` | 98.8% | Float (MW) |
@@ -281,7 +314,7 @@ Definidas en `seia-variables.xlsx`. El prompt en `prompts/extraction_prompt.md` 
 | `proximidad_y_superposicion_con_areas_protegidas` | 99.8% | String ≤ 200 chars |
 | `caracteristicas_del_generador` | 100% | Texto descriptivo |
 | `tasas_de_mortalidad_de_aves_murcielagos` | 3.7% | String o `"N/A"` |
-| `escaneado` | 100% | `"sí"` / `"no"` (metadato del pipeline) |
+| `escaneado` | 100% | `"sí"` / `"no"` |
 
 ---
 

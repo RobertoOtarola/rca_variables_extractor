@@ -152,6 +152,14 @@ def main() -> int:
     checkpoint = Checkpoint(Path(args.checkpoint))
 
     if args.reset:
+        # Respaldar checkpoint existente antes de ignorarlo
+        ckpt_path = Path(args.checkpoint)
+        if ckpt_path.exists():
+            from datetime import datetime
+
+            backup = ckpt_path.with_suffix(f".{datetime.now():%Y%m%d_%H%M%S}.bak")
+            ckpt_path.rename(backup)
+            log.info("Checkpoint respaldado en: %s", backup)
         log.info("--reset activado: se ignorará el checkpoint existente.")
         pending = pdfs
     else:
