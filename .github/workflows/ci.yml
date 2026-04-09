@@ -18,6 +18,9 @@ jobs:
       - name: Set up Python
         run: uv python install 3.11
 
+      - name: Install GDAL (for geopandas)
+        run: sudo apt-get update && sudo apt-get install -y gdal-bin libgdal-dev
+
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
@@ -26,6 +29,9 @@ jobs:
 
       - name: Run Ruff Format Check
         run: uv run ruff format --check src/
+
+      - name: Type check
+        run: uv run mypy src/rca_extractor/core/
 
       - name: Run Tests
         run: uv run pytest tests/

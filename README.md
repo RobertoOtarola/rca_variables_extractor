@@ -1,4 +1,4 @@
-# 🔍☑️ RCA Variables Extractor v7
+# 🔍☑️ RCA Variables Extractor
 
 **Herramienta para extraer automáticamente variables técnicas y ambientales desde Resoluciones de Calificación Ambiental (RCA) del Sistema de Evaluación de Impacto Ambiental (SEIA) de Chile.**
 
@@ -16,35 +16,38 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 |------|--------|-------------|
 | 🌐 **-1 · Adquisición** | ✅ `v0.6.0` | Scraper SEIA — descarga RCA e ICE por `id_expediente` |
 | 📄 **0 · Validación PDFs** | ✅ `v0.1.0` | Detección de corruptos, cifrados y escaneados |
-| 🤖 **1 · Extracción LLM** | ✅ `v0.1.0` | Gemini — 430/432 PDFs procesados (99.5%) · 20.77 GW |
+| 🤖 **1 · Extracción LLM** | ✅ `v0.1.0` | Gemini 2.5 Flash — 430/432 PDFs procesados (99.5%) · 20.77 GW |
 | 🗄️ **2 · Post-procesamiento** | ✅ `v0.2.0` | Normalización, validación y persistencia en SQLite |
 | 🌍 **3 · Geoespacial** | ✅ `v0.3.0` | Parser UTM multi-formato → WGS84 y GeoJSON |
 | ⚗️ **4 · ACV + API + Dashboard** | ✅ `v0.4.0` | LCA, FastAPI y Streamlit con acceso nativo a SQLite |
 | 📦 **5 · Arquitectura** | ✅ `v0.5.0` | Paquete `src/`, CI/CD, lockfile, Makefile |
 | 🚀 **6 · Scraper refactorizado** | ✅ `v0.6.0` | BS4, inyección de sesión, checkpoint, logging, streaming |
-| 🔐 **7 · Auditoría y Concurrencia** | ✅ `v0.7.0` | Thread-safety (`--workers > 1`), soporte nativo `uv` y Code Review |
 
 ---
 
 ## Instalación
 
-**Prerrequisitos:** Python ≥ 3.11 (o la herramienta [uv](https://github.com/astral-sh/uv))
+**Prerrequisitos:** Python ≥ 3.11
 
 ```bash
 git clone https://github.com/RobertoOtarola/rca_variables_extractor.git
 cd rca_variables_extractor
 
-# Opción A: Instalación ultrarrápida con uv (Recomendado)
-uv sync                 # lee el uv.lock y prepara el entorno .venv al instante
-source .venv/bin/activate
-
-# Opción B: Modo tradicional con pip
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e "."        # instalación base
-pip install -e ".[dev]"   # incluye pytest, ruff, mypy
+
+# Instalación base (extracción LLM, scraper, API, dashboard)
+pip install -e "."
+
+# Con capa geoespacial (requiere GDAL instalado en el sistema)
+# macOS:  brew install gdal
+# Ubuntu: sudo apt-get install gdal-bin libgdal-dev
+pip install -e ".[geo]"
+
+# Herramientas de desarrollo (tests, linting, tipado)
+pip install -e ".[dev]"
 
 # Configuración
-cp .env.example .env      # añadir GEMINI_API_KEY
+cp .env.example .env   # añadir GEMINI_API_KEY
 ```
 
 ---
@@ -53,10 +56,10 @@ cp .env.example .env      # añadir GEMINI_API_KEY
 
 ```bash
 # 1. Descargar RCAs desde el SEIA
-rca_scraper --input data/expedientes.csv --delay 4.0
+rca-scraper --input data/expedientes.csv --delay 4.0
 
-# 2. Extraer variables con Gemini
-rca_extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx
+# 2. Extraer variables con Gemini 2.5 Flash
+rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx
 
 # 3. Post-procesar y persistir en BD
 python -m rca_extractor.post_processing.run --input data/processed/results.xlsx
@@ -73,7 +76,7 @@ streamlit run src/rca_extractor/dashboard/app.py    # Dashboard → http://local
 ```
 rca_variables_extractor/
 ├── pyproject.toml                  # Dependencias y configuración del paquete
-├── requirements.txt                # Dependencias legacy (referencia; usar pyproject.toml)
+├── requirements.txt                # Legacy — usar pyproject.toml
 ├── seia-variables.xlsx             # Schema de variables a extraer
 ├── .env.example                    # Template de variables de entorno
 ├── .gitignore
@@ -84,17 +87,17 @@ rca_variables_extractor/
 │
 ├── tests/
 │   ├── conftest.py                 # Fixture: GEMINI_API_KEY=dummy
-│   ├── test_checkpoint.py
-│   ├── test_output_validator.py
-│   ├── test_prompt_builder.py
-│   └── test_rca_scraper.py
+│   ├── test_checkpoint.py          # 7 tests
+│   ├── test_output_validator.py    # 12 tests
+│   ├── test_prompt_builder.py      # 10 tests
+│   └── test_rca_scraper.py         # 6 tests (HTML fixtures locales)
 │
 └── src/rca_extractor/              # Package root (pip install -e .)
     ├── cli.py                      # Entrypoint del extractor LLM
     ├── config.py                   # Configuración centralizada (env vars)
     │
     ├── core/
-    │   ├── gemini_client.py        # Cliente Gemini + backoff + retry inteligente
+    │   ├── gemini_client.py        # Cliente Gemini 2.5 Flash + backoff + retry
     │   └── pdf_pipeline.py         # Orquestación: PDF nativo o escaneado
     │
     ├── utils/
@@ -105,11 +108,11 @@ rca_variables_extractor/
     │   └── prompt_builder.py       # Construcción de prompts desde schema XLSX
     │
     ├── tools/
-    │   ├── check_gitignore.py      # Verifica que archivos locales estén bien ignorados por Git
+    │   ├── check_gitignore.py      # Verifica que archivos locales estén bien ignorados
     │   ├── check_pdfs.py           # Auditoría del corpus: corruptos, cifrados, escaneados
     │   ├── list_models.py          # Lista los modelos Gemini disponibles para la API Key
-    │   ├── rca_scraper.py          # Scraper SEIA: descarga RCA + ICE (PDF/XML)
-    │   └── snippet_api_key.py      # Verifica que la API Key de Gemini funciona
+    │   ├── rca_scraper.py          # Scraper SEIA: RCA + ICE (PDF/XML)
+    │   └── snippet_api_key.py      # Verifica conexión con la API Key de Gemini
     │
     ├── post_processing/
     │   ├── db_storage.py           # ORM SQLAlchemy → SQLite / PostgreSQL
@@ -117,12 +120,12 @@ rca_variables_extractor/
     │   ├── run.py                  # CLI: python -m rca_extractor.post_processing.run
     │   └── validator.py            # Rangos científicos + detección de outliers
     │
-    ├── geo/
+    ├── geo/                        # Requiere pip install -e ".[geo]" + GDAL del sistema
     │   ├── coord_parser.py         # UTM multi-formato → WGS84
     │   └── spatial_analysis.py     # Intersección con áreas protegidas SNASPE
     │
     ├── lca/
-    │   ├── benchmarks.py           # Clasificación LOW / NORMAL / HIGH
+    │   ├── benchmarks.py           # Clasificación LOW / NORMAL / HIGH ⚠️ stub
     │   ├── calculator.py           # Cálculo de GEI, agua y energía de vida útil
     │   └── factors.py              # Factores IPCC/NREL/IEA por tecnología
     │
@@ -132,9 +135,11 @@ rca_variables_extractor/
     └── dashboard/
         ├── app.py                  # Streamlit + pd.read_sql
         └── components/
-            ├── charts.py           # Histogramas, scatter, box plots
-            └── maps.py             # Mapas Plotly/Mapbox
+            ├── charts.py           # Histogramas, scatter, box plots ⚠️ stub
+            └── maps.py             # Mapas Plotly/Mapbox ⚠️ stub
 ```
+
+> ⚠️ Los módulos marcados como **stub** tienen implementación pendiente para `v0.7.0`.
 
 ---
 
@@ -144,13 +149,13 @@ Descarga RCAs e ICEs desde `seia.sea.gob.cl` dado un `id_expediente`. Soporta lo
 
 ```bash
 # Descarga individual (RCA)
-rca_scraper --id 7021124
+rca-scraper --id 7021124
 
 # Descarga individual (RCA + ICE)
-rca_scraper --id 7021124 --ice
+rca-scraper --id 7021124 --ice
 
 # Lote desde archivo (columna requerida: id_expediente)
-rca_scraper --input data/expedientes.csv --delay 4.0 --ice
+rca-scraper --input data/expedientes.csv --delay 4.0 --ice
 ```
 
 **Variables de entorno del scraper** (en `.env`):
@@ -169,11 +174,11 @@ Los documentos se guardan en `data/raw/scraped/{id_expediente}/RCA.pdf` (o `.xml
 
 ```bash
 # Estrategia de 2 pasadas (recomendada para lotes grandes)
-rca_extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
+rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
   --workers 1 --cooldown 15 --max-retries 2
 
 # Segunda pasada — solo los fallidos (el checkpoint omite los exitosos)
-rca_extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
+rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
   --workers 1 --cooldown 15 --max-retries 5
 ```
 
@@ -181,12 +186,30 @@ rca_extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx
 |--------|---------|-------------|
 | `--pdf-folder` | `rcas/` | Carpeta con PDFs de entrada |
 | `--output` | `rca_results.xlsx` | Archivo Excel de salida |
-| `--workers` | `1` | Paralelismo — **> 1 es seguro** (escritura con bloqueo transaccional) |
+| `--workers` | `1` | Paralelismo — **no usar > 1** (no thread-safe aún) |
 | `--model` | `gemini-2.5-flash` | Modelo de Gemini |
 | `--cooldown` | `15` | Segundos entre PDFs |
 | `--max-retries` | `8` | Reintentos por PDF |
 | `--reset` | `False` | Ignorar checkpoint existente |
 | `--dry-run` | `False` | Listar PDFs pendientes sin procesar |
+
+---
+
+## Herramientas de Diagnóstico (`tools/`)
+
+```bash
+# Verificar conexión con Gemini y confirmar el modelo activo
+python src/rca_extractor/tools/snippet_api_key.py
+
+# Listar todos los modelos Gemini disponibles para la API Key
+python src/rca_extractor/tools/list_models.py
+
+# Auditar corpus de PDFs (corruptos, cifrados, escaneados)
+python -m rca_extractor.tools.check_pdfs data/raw/scraped/ --detect-scanned
+
+# Verificar que archivos locales estén correctamente ignorados por Git
+python src/rca_extractor/tools/check_gitignore.py
+```
 
 ---
 
@@ -215,8 +238,8 @@ Copiar desde `.env.example` y completar:
 # Requerida
 GEMINI_API_KEY="tu_api_key_aqui"
 
-# Modelo Gemini (default: gemini-2.5-flash)
-# GEMINI_MODEL=models/gemini-2.5-flash
+# Modelo Gemini — usar ID explícito (los alias no son determinísticos)
+# GEMINI_MODEL=gemini-2.5-flash
 
 # Retries y delays
 # MAX_RETRIES="8"
@@ -239,7 +262,7 @@ GEMINI_API_KEY="tu_api_key_aqui"
 
 ## Variables Extraídas
 
-Definidas en `seia-variables.xlsx`. El prompt en `prompts/extraction_prompt.md` especifica el formato exacto de cada una.
+Definidas en `seia-variables.xlsx`. El prompt en `prompts/extraction_prompt.md` especifica el formato exacto.
 
 | Variable | Cobertura | Formato |
 |----------|-----------|---------|
@@ -278,4 +301,4 @@ Definidas en `seia-variables.xlsx`. El prompt en `prompts/extraction_prompt.md` 
 
 ## Licencia
 
-[GPL-3.0](LICENSE) — Roberto Otárola · CEDEUS UC · 2026
+[GPL-3.0](LICENSE) — Roberto Otárola Estrada · CEDEUS UC · 2026
