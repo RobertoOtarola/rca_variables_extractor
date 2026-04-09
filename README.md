@@ -23,6 +23,7 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 | 📦 **5 · Arquitectura** | ✅ `v0.5.0` | Paquete `src/`, CI/CD, lockfile, Makefile |
 | 🚀 **6 · Scraper refactorizado** | ✅ `v0.6.0` | BS4, inyección de sesión, checkpoint, logging, streaming |
 | 🔧 **7 · Estabilidad** | ✅ `v0.7.0` | Thread-safety en CLI, módulos LCA/Dashboard completos, geo opcional |
+| 🎛️ **8 · Dashboard integrado** | ✅ `v0.8.0` | `app.py` usa componentes `charts.py`/`maps.py`; backup en `--reset` |
 
 ---
 
@@ -89,7 +90,7 @@ streamlit run src/rca_extractor/dashboard/app.py    # Dashboard → http://local
 
 ```
 rca_variables_extractor/
-├── pyproject.toml                  # Dependencias y configuración (v0.7.0)
+├── pyproject.toml                  # Dependencias y configuración (v0.8.0)
 ├── uv.lock                         # Lockfile determinístico
 ├── .env.example                    # Template de variables de entorno
 ├── .gitignore
@@ -111,7 +112,7 @@ rca_variables_extractor/
 │   └── test_rca_scraper.py         # 6 tests  — tools/rca_scraper
 │                                   # Total: 76 tests + 2 skipped (requieren credenciales)
 └── src/rca_extractor/
-    ├── cli.py                      # Entrypoint extractor LLM (thread-safe con Lock desde v0.7.0)
+    ├── cli.py                      # Entrypoint LLM — thread-safe · backup checkpoint en --reset
     ├── config.py                   # GEMINI_MODEL = "gemini-2.5-flash" (ID explícito)
     │
     ├── core/
@@ -143,7 +144,7 @@ rca_variables_extractor/
     │   └── spatial_analysis.py     # Intersección con áreas protegidas SNASPE
     │
     ├── lca/
-    │   ├── benchmarks.py           # Clasificación LOW/NORMAL/HIGH (IPCC/NREL/Ong)
+    │   ├── benchmarks.py           # classify_ghg/water/land/project() (IPCC/NREL/Ong)
     │   ├── calculator.py           # compute_lca() → LCAResult(ghg, water, energy)
     │   └── factors.py              # Factores de referencia por tecnología
     │
@@ -151,7 +152,7 @@ rca_variables_extractor/
     │   └── main.py                 # FastAPI: /health /stats /projects /lca
     │
     └── dashboard/
-        ├── app.py                  # Streamlit + pd.read_sql
+        ├── app.py                  # Streamlit — usa componentes charts.py y maps.py
         └── components/
             ├── __init__.py
             ├── charts.py           # render_histogram / render_scatter / render_box_plot
@@ -187,10 +188,10 @@ Los documentos se guardan en `data/raw/scraped/{id_expediente}/RCA.pdf` (o `.xml
 ```bash
 # Estrategia de 2 pasadas (recomendada para lotes grandes)
 rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
-  --workers 1 --cooldown 15 --max-retries 2
+  --workers 2 --cooldown 15 --max-retries 2
 
 rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
-  --workers 1 --cooldown 15 --max-retries 5
+  --workers 2 --cooldown 15 --max-retries 5
 ```
 
 | Opción | Default | Descripción |
@@ -201,10 +202,10 @@ rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx
 | `--model` | `gemini-2.5-flash` | Modelo Gemini (ID explícito, no aliases) |
 | `--cooldown` | `15` | Segundos entre PDFs |
 | `--max-retries` | `8` | Reintentos por PDF |
-| `--reset` | `False` | Ignorar checkpoint existente |
+| `--reset` | `False` | Ignora checkpoint — crea backup `.bak` automático (desde v0.8.0) |
 | `--dry-run` | `False` | Listar PDFs pendientes sin procesar |
 
-> **Concurrencia:** El CLI es thread-safe desde `v0.7.0`. Para lotes grandes, usa `--workers 2` o `--workers 4` ajustando `--cooldown` para no exceder la cuota de Gemini (HTTP 429).
+> **Backup automático en `--reset`:** desde v0.8.0, el checkpoint existente se respalda como `checkpoint.YYYYMMDD_HHMMSS.bak` antes de ser ignorado, evitando pérdida accidental del historial de procesamiento.
 
 ---
 
@@ -214,12 +215,9 @@ rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx
 from rca_extractor.lca.benchmarks import classify_project, classify_ghg, classify_water, classify_land
 from rca_extractor.lca.calculator import compute_lca
 
-# Clasificación de un proyecto
-result = classify_project(row)          # BenchmarkResult con ghg/water/land
-label  = classify_ghg("Fotovoltaica", 35.0)   # → "NORMAL"
-
-# Cálculo LCA
-lca = compute_lca(project_row)          # LCAResult(ghg, water, energy)
+result = classify_project(row)                # BenchmarkResult(ghg, water, land)
+label  = classify_ghg("Fotovoltaica", 35.0)  # → "NORMAL"
+lca    = compute_lca(project_row)             # LCAResult(ghg, water, energy)
 ```
 
 ---
@@ -231,10 +229,12 @@ from rca_extractor.dashboard.components.charts import render_histogram, render_s
 from rca_extractor.dashboard.components.maps import render_project_map
 
 fig = render_histogram(df, column="potencia_nominal_bruta_mw")
-fig = render_scatter(df, x="potencia_nominal_bruta_mw", y="superficie_total_intervenida_ha")
-fig = render_box_plot(df, x="tipo_de_generacion_eolica_fv_csp", y="factor_de_planta")
+fig = render_scatter(df, x="potencia_nominal_bruta_mw", y="intensidad_de_uso_de_suelo_ha_mw_1")
+fig = render_box_plot(df, x="tech", y="water_intensity_m3_mwh")
 fig = render_project_map(df)   # scatter_mapbox centrado en Chile
 ```
+
+Desde v0.8.0, `dashboard/app.py` delega la generación de figuras a estos componentes en las secciones de potencia/uso de suelo, consumo de agua y mapa georreferenciado.
 
 ---
 
@@ -263,7 +263,7 @@ ruff check src/
 mypy src/rca_extractor/core/
 ```
 
-**Estado actual (v0.7.0):** 76 tests passing · 2 skipped · `ruff` ✅ · `mypy` ✅
+**Estado actual (v0.8.0):** 76 tests passing · 2 skipped · `ruff` ✅ · `mypy` ✅
 
 ---
 
