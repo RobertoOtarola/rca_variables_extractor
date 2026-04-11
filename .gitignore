@@ -7,15 +7,16 @@ build/
 .venv/
 venv/
 
-# Testing y Dependencies
+# Testing
 .coverage*
 htmlcov/
+.pytest_cache/
 
 # Entorno
 .env
 *.env.local
 
-# IDE
+# IDE / OS
 .vscode/
 .idea/
 *.swp
@@ -28,13 +29,19 @@ Icon
 .Spotlight-V100
 .Trashes
 
-# Data (PDFs pesados, no versionados)
-data/raw/*.pdf
+# Data — PDFs, resultados, BD
+data/raw/**/*.pdf
+data/raw/scraped/
 data/processed/*.xlsx
 data/processed/*.db
+data/processed/*.geojson
+data/processed/checkpoint*.json
 data/raw_backup/
 *.csv
 *.ods
+
+# LibreOffice lock files
+.~lock.*
 
 # SQLite
 db.sqlite3
@@ -47,14 +54,16 @@ logs/
 *_checkpoint.json
 gemini_file_cache.json
 
-# Otros
-*.zip
-media/
-
-# Distribución/Instalación
+# Distribución
 pip-log.txt
 pip-delete-this-directory.txt
 share/python-wheels/
 
+# Otros
+*.zip
+media/
+
 # Notas de desarrollo
 tdd/
+
+# .gitkeep innecesarios (los directorios ya contienen archivos tracked)
