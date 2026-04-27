@@ -1,8 +1,7 @@
 import pytest
 import requests
-import re
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from rca_extractor.tools.rca_scraper import find_doc_links, download_file
 
 @pytest.fixture

@@ -8,7 +8,9 @@ Uso:
 import pytest
 from pathlib import Path
 
-from rca_extractor.utils.prompt_builder import load_variables, build_prompt, expected_keys, _to_snake_key
+from rca_extractor.utils.prompt_builder import (
+    load_variables, build_prompt, expected_keys, _to_snake_key, get_prompt_for_technology,
+)
 from rca_extractor.utils.output_validator import parse_and_validate
 
 
@@ -100,3 +102,25 @@ class TestParseAndValidate:
         result = parse_and_validate(raw, self.KEYS)
         assert "clave_inventada" not in result
         assert result["potencia_nominal_bruta_mw"] == "50 MW"
+
+
+# ── get_prompt_for_technology ─────────────────────────────────────────────────
+
+class TestGetPromptForTechnology:
+    def test_get_prompt_eolica_contains_aerogenerador(self):
+        prompt = get_prompt_for_technology("Eólica")
+        assert "aerogenerador" in prompt.lower()
+
+    def test_get_prompt_fv_contains_modulos(self):
+        prompt = get_prompt_for_technology("Fotovoltaica")
+        assert "módulos" in prompt.lower() or "modulos" in prompt.lower()
+
+    def test_get_prompt_desconocido_returns_fallback(self):
+        prompt = get_prompt_for_technology("Desconocido")
+        assert len(prompt) > 0   # fallback siempre retorna algo
+
+    def test_get_prompt_csp_uses_fv_prompt(self):
+        prompt_csp = get_prompt_for_technology("CSP")
+        prompt_fv = get_prompt_for_technology("Fotovoltaica")
+        assert prompt_csp == prompt_fv
+

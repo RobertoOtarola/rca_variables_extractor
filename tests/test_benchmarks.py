@@ -4,7 +4,6 @@ test_benchmarks.py — Tests para lca/benchmarks.py.
 Verifica la clasificación LOW / NORMAL / HIGH contra factores de referencia.
 """
 
-import pytest
 from rca_extractor.lca.benchmarks import (
     classify_ghg,
     classify_water,

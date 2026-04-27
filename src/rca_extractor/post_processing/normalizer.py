@@ -25,6 +25,45 @@ NUMERIC_COLS: dict[str, str] = {
     "emisiones_gei_embebidas_kg_co2_eq_kwh_1": "float64",
 }
 
+# ── Columnas numéricas exclusivas por tecnología ─────────────────────────────
+NUMERIC_COLUMNS_EOLICA: list[str] = [
+    "numero_aerogeneradores",
+    "potencia_unitaria_aerogenerador_kw",
+    "altura_buje_m",
+    "diametro_rotor_m",
+    "numero_aspas_por_aerogenerador",
+    "velocidad_arranque_m_s",
+    "velocidad_nominal_m_s",
+    "velocidad_parada_m_s",
+    "mortalidad_aves_murcielagos_total_ind",
+    "demanda_energia_acumulada_mj_kwh_1",
+    "potencial_de_acidificacion_g_so2_eq_kwh_1",
+    "potencial_de_eutrofizacion_g_po4_eq_kwh_1",
+]
+
+NUMERIC_COLUMNS_FV: list[str] = [
+    "potencia_pico_mwp",
+    "numero_modulos_paneles",
+    "numero_inversores",
+    "altura_modulos_sobre_suelo_m",
+    "irradiacion_ghi_kwh_m2_ano_1",
+    "transformacion_superficie_km2_gw_1",
+    "transformacion_superficie_km2_twh_1",
+    "erosion_suelo_ha",
+    "calidad_suelo_sqr",
+    "consumo_agua_limpieza_m3_mwp_ano_1",
+    "fragmentacion_habitat_ha",
+    "mortalidad_aves_ind_mw_ano_1",
+    "mortalidad_fauna_colision_quemadura_ind",
+    "mortalidad_fauna_balsas_evaporacion_ind",
+    "emisiones_particulas_t_ano_1",
+    "emisiones_mercurio_g_hg_gwh_1",
+    "emisiones_cadmio_g_cd_gwh_1",
+    "potencial_acidificacion_lluvia_acida_g_so2_gwh_1",
+    "potencial_eutrofizacion_g_n_gwh_1",
+]
+
+
 # ── Mapeo vocabulario controlado para tipo de generación ─────────────────────
 TECH_MAP: dict[str, str] = {
     "fotovoltaica": "FV",
@@ -76,8 +115,13 @@ def normalize(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-    # 1. Convertir numéricas
+    # 1. Convertir numéricas (comunes)
     for col, dtype in NUMERIC_COLS.items():
+        if col in df.columns:
+            df[col] = _to_numeric(df[col])
+
+    # 1b. Convertir numéricas (específicas por tecnología)
+    for col in NUMERIC_COLUMNS_EOLICA + NUMERIC_COLUMNS_FV:
         if col in df.columns:
             df[col] = _to_numeric(df[col])
 

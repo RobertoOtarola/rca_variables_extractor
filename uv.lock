@@ -1714,12 +1714,11 @@ wheels = [
 
 [[package]]
 name = "rca-extractor"
-version = "0.1.0"
+version = "0.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "fastapi" },
-    { name = "geopandas" },
     { name = "google-genai" },
     { name = "json-repair" },
     { name = "openpyxl" },
@@ -1727,10 +1726,8 @@ dependencies = [
     { name = "plotly" },
     { name = "pymupdf" },
     { name = "pypdf" },
-    { name = "pyproj" },
     { name = "python-dotenv" },
     { name = "requests" },
-    { name = "shapely" },
     { name = "sqlalchemy" },
     { name = "streamlit" },
     { name = "tqdm" },
@@ -1744,12 +1741,17 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
+geo = [
+    { name = "geopandas" },
+    { name = "pyproj" },
+    { name = "shapely" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12.0,<5.0.0" },
     { name = "fastapi", specifier = ">=0.115.0,<1.0.0" },
-    { name = "geopandas", specifier = ">=0.14.0,<1.0.0" },
+    { name = "geopandas", marker = "extra == 'geo'", specifier = ">=0.14.0,<1.0.0" },
     { name = "google-genai", specifier = ">=1.0.0,<2.0.0" },
     { name = "json-repair", specifier = ">=0.30.0,<1.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.9.0,<2.0.0" },
@@ -1758,19 +1760,19 @@ requires-dist = [
     { name = "plotly", specifier = ">=5.24.0,<6.0.0" },
     { name = "pymupdf", specifier = ">=1.24.0,<2.0.0" },
     { name = "pypdf", specifier = ">=4.0.0,<5.0.0" },
-    { name = "pyproj", specifier = ">=3.6.0,<4.0.0" },
+    { name = "pyproj", marker = "extra == 'geo'", specifier = ">=3.6.0,<4.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0,<9.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0,<6.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.1,<2.0.0" },
     { name = "requests", specifier = ">=2.31.0,<3.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0,<1.0.0" },
-    { name = "shapely", specifier = ">=2.0.0,<3.0.0" },
+    { name = "shapely", marker = "extra == 'geo'", specifier = ">=2.0.0,<3.0.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0,<3.0.0" },
     { name = "streamlit", specifier = ">=1.40.0,<2.0.0" },
     { name = "tqdm", specifier = ">=4.66.0,<5.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0,<1.0.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["geo", "dev"]
 
 [[package]]
 name = "referencing"

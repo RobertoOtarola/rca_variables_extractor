@@ -15,6 +15,39 @@ from pathlib import Path
 
 log = logging.getLogger("rca_extractor")
 
+# ── Selección de prompt por tecnología ────────────────────────────────────────
+
+PROMPTS_DIR = Path(__file__).parent.parent.parent.parent / "prompts"
+
+# Mapeo tecnología → archivo de prompt
+_PROMPT_FILES: dict[str, str] = {
+    "Eólica":                "extraction_prompt_eolica.md",
+    "Fotovoltaica":          "extraction_prompt_fv.md",
+    "CSP":                   "extraction_prompt_fv.md",       # CSP usa prompt FV como base
+    "Eólica + Fotovoltaica": "extraction_prompt_eolica.md",   # Híbrido: prompt eólico
+    "Fotovoltaica + CSP":    "extraction_prompt_fv.md",       # Híbrido: prompt FV
+    "Desconocido":           "extraction_prompt.md",           # Fallback genérico
+}
+
+
+def get_prompt_for_technology(tech: str) -> str:
+    """
+    Retorna el contenido del prompt correcto según la tecnología detectada.
+
+    Args:
+        tech: Valor retornado por detect_technology().
+
+    Returns:
+        Contenido del prompt como string.
+    """
+    filename = _PROMPT_FILES.get(tech, "extraction_prompt.md")
+    prompt_path = PROMPTS_DIR / filename
+    if not prompt_path.exists():
+        log.warning("Prompt %s no encontrado. Usando fallback genérico.", filename)
+        fallback = PROMPTS_DIR / "extraction_prompt.md"
+        return fallback.read_text(encoding="utf-8")
+    return prompt_path.read_text(encoding="utf-8")
+
 # ── Normalización de claves ───────────────────────────────────────────────────
 
 

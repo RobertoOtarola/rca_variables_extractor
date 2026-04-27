@@ -6,7 +6,6 @@ permitiendo ejecutar tests unitarios sin credenciales reales.
 """
 
 import os
-import pytest
 
 # Se setea ANTES de cualquier import de config.py
 os.environ.setdefault("GEMINI_API_KEY", "dummy-key-for-tests")

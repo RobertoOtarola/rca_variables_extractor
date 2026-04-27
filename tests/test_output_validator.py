@@ -5,8 +5,10 @@ Cubre extract_json_block con edge cases y escenarios reales de respuestas
 de Gemini.
 """
 
-import pytest
-from rca_extractor.utils.output_validator import extract_json_block, parse_and_validate
+from rca_extractor.utils.output_validator import (
+    extract_json_block, parse_and_validate, validate_output,
+    COMMON_KEYS,
+)
 
 
 class TestExtractJsonBlock:
@@ -68,3 +70,42 @@ class TestParseAndValidateEdgeCases:
         raw = '["array", "response"]'
         result = parse_and_validate(raw, self.KEYS)
         assert result == {"a": "N/A", "b": "N/A"}
+
+
+# ── validate_output (prompts específicos) ─────────────────────────────────────
+
+class TestValidateOutput:
+    def test_eolica_includes_eolica_keys(self):
+        data = {"tipo_de_generacion": "Eólica", "altura_buje_m": 120}
+        result = validate_output(data)
+        assert "altura_buje_m" in result
+        assert "numero_aerogeneradores" in result  # rellenado con N/A
+
+    def test_fv_includes_fv_keys(self):
+        data = {"tipo_de_generacion": "Fotovoltaica", "potencia_pico_mwp": 300}
+        result = validate_output(data)
+        assert "potencia_pico_mwp" in result
+        assert "numero_modulos_paneles" in result  # rellenado con N/A
+
+    def test_unknown_keys_removed(self):
+        data = {"tipo_de_generacion": "Eólica", "clave_inventada": "valor"}
+        result = validate_output(data)
+        assert "clave_inventada" not in result
+
+    def test_common_keys_always_filled(self):
+        data = {"tipo_de_generacion": "Desconocido"}
+        result = validate_output(data)
+        for key in COMMON_KEYS:
+            assert key in result
+
+    def test_eolica_does_not_include_fv_exclusive(self):
+        data = {"tipo_de_generacion": "Eólica"}
+        result = validate_output(data)
+        # FV-exclusive keys should not be forced (not in expected)
+        assert result.get("potencia_pico_mwp", "N/A") == "N/A"
+
+    def test_case_insensitive_keys_in_validate(self):
+        data = {"Tipo_De_Generacion": "Fotovoltaica", "POTENCIA_PICO_MWP": 150}
+        result = validate_output(data)
+        assert result["potencia_pico_mwp"] == 150
+

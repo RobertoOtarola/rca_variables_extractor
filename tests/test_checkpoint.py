@@ -2,7 +2,6 @@
 test_checkpoint.py — Tests unitarios para checkpoint.py.
 """
 
-import json
 import pytest
 from pathlib import Path
 

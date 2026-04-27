@@ -4,8 +4,6 @@ test_lca_calculator.py — Tests para lca/calculator.py.
 Verifica el cálculo de ACV para proyectos con datos completos y parciales.
 """
 
-import math
-import pytest
 from rca_extractor.lca.calculator import calculate, LCAResult, _f
 
 

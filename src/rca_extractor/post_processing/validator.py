@@ -43,6 +43,22 @@ RANGE_RULES: list[RangeRule] = [
         "m³/MWh",
         note="FV casi 0; CSP húmedo hasta 3; >20 probable error",
     ),
+    # ── Rangos adicionales: Eólica ────────────────────────────────────────────
+    RangeRule("numero_aerogeneradores", 1, 300, "unidades"),
+    RangeRule("potencia_unitaria_aerogenerador_kw", 500, 20_000, "kW"),
+    RangeRule("altura_buje_m", 40, 200, "m"),
+    RangeRule("diametro_rotor_m", 30, 280, "m"),
+    RangeRule("numero_aspas_por_aerogenerador", 2, 4, "unidades"),
+    RangeRule("velocidad_arranque_m_s", 2, 6, "m/s"),
+    RangeRule("velocidad_nominal_m_s", 8, 18, "m/s"),
+    RangeRule("velocidad_parada_m_s", 20, 35, "m/s"),
+    # ── Rangos adicionales: Fotovoltaica ──────────────────────────────────────
+    RangeRule("potencia_pico_mwp", 0.1, 2000, "MWp"),
+    RangeRule("numero_modulos_paneles", 100, 5_000_000, "unidades"),
+    RangeRule("irradiacion_ghi_kwh_m2_ano_1", 1200, 3500, "kWh/m²/año"),
+    RangeRule("transformacion_superficie_km2_gw_1", 1, 100, "km²/GW"),
+    RangeRule("erosion_suelo_ha", 0, 5000, "ha"),
+    RangeRule("mortalidad_aves_ind_mw_ano_1", 0, 100, "ind/MW/año"),
 ]
 
 
