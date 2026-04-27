@@ -111,7 +111,7 @@ cp .env.example .env   # añadir GEMINI_API_KEY
 rca-scraper --input data/expedientes.csv --delay 4.0
 
 # 2. Extraer variables con Gemini 2.5 Flash
-rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx
+rca-extractor --pdf-folder data/scraped --output data/processed/results.xlsx
 
 # 3. Post-procesar y persistir en BD
 python -m rca_extractor.post_processing.run --input data/processed/results.xlsx
@@ -164,7 +164,7 @@ Pipeline de extracción en dos fases con detección automática de tecnología:
 
 Si la detección falla, se usa el prompt genérico como fallback.
 ```bash
-rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
+rca-extractor --pdf-folder data/scraped --output data/processed/results.xlsx \
   --workers 2 --cooldown 15 --max-retries 5
 ```
 > **Tip:** El flag `--reset` ignora el checkpoint actual pero crea una copia de seguridad automática (`.bak`) primero, previniendo perdida de avances considerables.
@@ -194,7 +194,7 @@ fig = render_project_map(df)                 # Renderiza mapa interactivo de Chi
 Para evaluar la configuración o un corpus de documentos PDFs de manera rápida:
 ```bash
 python src/rca_extractor/tools/snippet_api_key.py      # Verificar conexión y credenciales AI
-python -m rca_extractor.tools.check_pdfs data/raw/scraped/ --detect-scanned
+python -m rca_extractor.tools.check_pdfs data/scraped/ --detect-scanned
 ```
 
 **Testing y Calidad de Código:**

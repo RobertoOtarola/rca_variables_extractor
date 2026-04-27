@@ -49,7 +49,7 @@ PROMPT_FALLBACK: Path = PROMPTS_DIR / "extraction_prompt.md"
 TECH_DETECTION_ENABLED: bool = os.getenv("TECH_DETECTION_ENABLED", "true").lower() != "false"
 
 # ── Scraper SEIA ─────────────────────────────────────────────────────────────
-SCRAPED_DIR: Path = PROJECT_ROOT / os.getenv("SCRAPED_DIR", "data/raw/scraped")
+SCRAPED_DIR: Path = PROJECT_ROOT / os.getenv("SCRAPED_DIR", "data/scraped")
 SCRAPER_DELAY: float = float(os.getenv("SCRAPER_DELAY", "3.0"))
 SCRAPER_CHECKPOINT: Path = PROJECT_ROOT / os.getenv("SCRAPER_CHECKPOINT", "checkpoints/scraper_checkpoint.json")
 SCRAPER_LOG_FILE: Path = PROJECT_ROOT / os.getenv("SCRAPER_LOG_FILE", "logs/scraper.log")
