@@ -36,7 +36,7 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 
 ## ✨ Características Principales
 
-- **Web Scraper Integrado:** Descarga automática de RCAs e ICEs desde `seia.sea.gob.cl`.
+- **Web Scraper Integrado:** Descarga automática de RCAs e ICEs desde `sea.gob.cl`.
 - **Extracción NLP Avanzada:** Uso de **Gemini 2.5 Flash** con prompts específicos por tecnología (Eólica: 39 variables, Fotovoltaica: 49 variables) y detección automática de tecnología.
 - **Detección Automática:** Validación rigurosa de documentos (PDFs nativos, escaneados, cifrados, corruptos).
 - **Procesamiento Geoespacial:** Parseo de coordenadas UTM a WGS84, e intersección con áreas protegidas.
