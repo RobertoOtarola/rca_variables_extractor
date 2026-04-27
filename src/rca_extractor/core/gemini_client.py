@@ -29,7 +29,7 @@ _FATAL_CODES = {
 # Tiempos de espera
 _QUOTA_MIN_WAIT = 65.0  # piso para 429
 _QUOTA_MAX_WAIT = 600.0  # techo: 10 minutos
-_TRANSIENT_MIN_WAIT = 30.0  # piso para 5xx (subido para dar más aire)
+_TRANSIENT_MIN_WAIT = 60.0  # piso para 5xx (subido de 30s para dar más aire)
 _TRANSIENT_MAX_WAIT = 300.0  # techo: 5 minutos
 
 
@@ -82,7 +82,7 @@ class GeminiClient:
     def __init__(self, api_key: str, model: str, temperature: float = 0):
         self.client = genai.Client(
             api_key=api_key,
-            http_options=types.HttpOptions(timeout=120000)  # 120s en ms
+            http_options=types.HttpOptions(timeout=300000)  # 300s en ms (aumentado de 120s)
         )
         self.model_name = model
         self.temperature = temperature
