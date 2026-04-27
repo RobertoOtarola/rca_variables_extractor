@@ -24,7 +24,7 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 | 🚀 **6 · Scraper refactorizado** | ✅ `v0.6.0` | BS4, inyección de sesión, checkpoint, logging, streaming |
 | 🔧 **7 · Estabilidad** | ✅ `v0.7.0` | Thread-safety en CLI, módulos LCA/Dashboard completos, geo opcional |
 | 🎛️ **8 · Dashboard integrado** | ✅ `v0.8.0` | `app.py` usa componentes `charts.py`/`maps.py`; backup en `--reset` |
-| 🧠 **9 · Prompts específicos** | 🚧 `v0.9.0` | Detección automática de tecnología + prompts eólica/FV (39 y 49 vars) |
+| 🏁 **10 · Arquitectura y Estabilización** | ✅ `v1.0.0` | Refactor de concurrencia, single upload, testing integración E2E |
 
 ---
 
@@ -91,7 +91,7 @@ streamlit run src/rca_extractor/dashboard/app.py    # Dashboard → http://local
 
 ```
 rca_variables_extractor/
-├── pyproject.toml                  # Dependencias y configuración (v0.9.0)
+├── pyproject.toml                  # Dependencias y configuración (v1.0.0)
 ├── uv.lock                         # Lockfile determinístico
 ├── .env.example                    # Template de variables de entorno
 ├── .gitignore
@@ -167,9 +167,9 @@ rca_variables_extractor/
 
 ---
 
-## Detección Automática de Tecnología (v0.9.0)
+## Detección Automática de Tecnología (v1.0.0)
 
-Desde v0.9.0, el extractor detecta automáticamente la tecnología de cada RCA antes de la extracción completa, usando un prompt ultraligero de una sola respuesta, y enruta al prompt específico correspondiente.
+Desde v1.0.0, el extractor detecta automáticamente la tecnología de cada RCA antes de la extracción completa, usando un prompt ultraligero de una sola respuesta, y enruta al prompt específico correspondiente.
 
 ```
 PDF
@@ -194,7 +194,7 @@ TECH_DETECTION_ENABLED=false rca-extractor --pdf-folder data/raw/scraped ...
 
 ---
 
-## Variables Extraídas (v0.9.0)
+## Variables Extraídas (v1.0.0)
 
 ### Variables compartidas (25) — presentes en todos los prompts
 
@@ -297,7 +297,7 @@ uv run mypy src/rca_extractor/core/
 PYTHONPATH=src pytest tests/ --cov=rca_extractor --cov-report=term-missing
 ```
 
-**Estado actual (v0.8.0/v0.9.0 en desarrollo):** 76–94 tests · `ruff` ✅ · `mypy` ✅
+**Estado actual (v1.0.0 estable):** 76–94 tests · `ruff` ✅ · `mypy` ✅
 
 ---
 
