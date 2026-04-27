@@ -25,7 +25,12 @@ TECH_VALUES = frozenset({
 })
 
 
-def detect_technology(pdf_path: Path, client: GeminiClient) -> str:
+def detect_technology(
+    client: GeminiClient, 
+    pdf_name: str, 
+    file_ref=None, 
+    images: list[bytes] | None = None
+) -> str:
     """
     Detecta el tipo de tecnología de una RCA antes de la extracción completa.
 
@@ -33,8 +38,10 @@ def detect_technology(pdf_path: Path, client: GeminiClient) -> str:
     despreciable (~$0.001 USD por cada 1000 PDFs con Gemini 2.5 Flash).
 
     Args:
-        pdf_path: Ruta al PDF de la RCA.
         client: Instancia de GeminiClient ya configurada.
+        pdf_name: Nombre del PDF (para logging).
+        file_ref: Referencia del archivo en Gemini (para PDFs con texto).
+        images: Lista de imágenes de las primeras páginas (para PDFs escaneados).
 
     Returns:
         Uno de los valores en TECH_VALUES, o "Desconocido" si no se puede
@@ -42,24 +49,26 @@ def detect_technology(pdf_path: Path, client: GeminiClient) -> str:
     """
     try:
         prompt = config.TECH_DETECTION_PROMPT.read_text(encoding="utf-8")
-        file_ref = client.upload_pdf(str(pdf_path))
-        try:
+        
+        if images is not None:
+            response = client.generate_from_images(prompt, images, retries=2, base_delay=2.0)
+        elif file_ref is not None:
             response = client.generate(prompt, file_ref, retries=2, base_delay=2.0)
-        finally:
-            client.delete_file(file_ref)
+        else:
+            raise ValueError("Se debe proveer file_ref o images")
 
         tech = response.strip()
         if tech in TECH_VALUES:
-            log.debug("Tecnología detectada para %s: %s", pdf_path.name, tech)
+            log.debug("Tecnología detectada para %s: %s", pdf_name, tech)
             return tech
 
         log.warning(
             "Respuesta de detección no reconocida para %s: %r",
-            pdf_path.name,
+            pdf_name,
             tech,
         )
         return "Desconocido"
 
     except Exception as exc:
-        log.warning("Detección de tecnología falló para %s: %s", pdf_path.name, exc)
+        log.warning("Detección de tecnología falló para %s: %s", pdf_name, exc)
         return "Desconocido"

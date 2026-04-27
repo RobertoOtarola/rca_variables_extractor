@@ -54,37 +54,43 @@ class RCAExtractor:
         pdf_path = Path(pdf_path)
         log.info("Procesando: %s", pdf_path.name)
 
-        # ── Fase 1: detección de tecnología ──────────────────────────────────
+        # ── Flujo Principal (Detección + Extracción) ─────────────────────────
         tech = "Desconocido"
-        if config.TECH_DETECTION_ENABLED:
-            tech = detect_technology(pdf_path, self.client)
-            log.info("[%s] Tecnología detectada: %s", pdf_path.name, tech)
-
-        # ── Fase 2: seleccionar prompt y extraer ─────────────────────────────
-        use_specific_prompt = tech != "Desconocido"
         scanned = detect_scanned(pdf_path)
-
-        if use_specific_prompt:
-            # Prompt específico: ya contiene variables y formato de salida
-            prompt = get_prompt_for_technology(tech)
-        else:
-            # Fallback: prompt genérico construido dinámicamente
-            prompt = build_prompt(variables, prompt_file=config.PROMPT_FILE)
+        use_specific_prompt = False
 
         if scanned:
             log.info(
                 "📷 %s detectado como escaneado → procesando por imágenes",
                 pdf_path.name,
             )
+            from rca_extractor.utils.pdf_utils import pdf_to_images
+            
+            images = pdf_to_images(pdf_path)
+
+            if config.TECH_DETECTION_ENABLED:
+                tech = detect_technology(self.client, pdf_path.name, images=images[:3])
+                log.info("[%s] Tecnología detectada: %s", pdf_path.name, tech)
+
+            use_specific_prompt = tech != "Desconocido"
+            prompt = get_prompt_for_technology(tech) if use_specific_prompt else build_prompt(variables, prompt_file=config.PROMPT_FILE)
+
             raw = self.client.generate_from_images(
                 prompt=prompt,
-                pdf_path=str(pdf_path),
+                images=images,
                 retries=self.max_retries,
                 base_delay=self.retry_base_delay,
             )
         else:
             file_ref = self.client.upload_pdf(str(pdf_path))
             try:
+                if config.TECH_DETECTION_ENABLED:
+                    tech = detect_technology(self.client, pdf_path.name, file_ref=file_ref)
+                    log.info("[%s] Tecnología detectada: %s", pdf_path.name, tech)
+
+                use_specific_prompt = tech != "Desconocido"
+                prompt = get_prompt_for_technology(tech) if use_specific_prompt else build_prompt(variables, prompt_file=config.PROMPT_FILE)
+
                 raw = self.client.generate(
                     prompt=prompt,
                     file_ref=file_ref,
@@ -118,8 +124,15 @@ class RCAExtractor:
         data["archivo"] = pdf_path.name
         data["escaneado"] = "sí" if scanned else "no"
         data["tecnologia_detectada"] = tech
+        
+        # Guardar la versión del prompt utilizado (útil para migración de corpus)
+        if use_specific_prompt:
+            tech_key = tech.lower().replace(" ", "_").replace("+", "y")
+            data["prompt_version"] = f"v2_{tech_key}"
+        else:
+            data["prompt_version"] = "v1_generic"
 
-        n_vars = len(data) - 3  # excluir archivo, escaneado, tecnologia_detectada
+        n_vars = len(data) - 4  # excluir metadatos internos
         log.info(
             "✓ %s → %d variables extraídas [%s]%s",
             pdf_path.name,

@@ -28,38 +28,28 @@ def mock_client():
     ("Solar", "Desconocido"),               # respuesta inválida
     ("", "Desconocido"),                    # vacío
 ])
-def test_detect_technology_responses(mock_client, tmp_path, response, expected):
-    pdf = tmp_path / "test.pdf"
-    pdf.write_bytes(b"%PDF-1.4")
+def test_detect_technology_responses(mock_client, response, expected):
     mock_client.generate.return_value = response
-    result = detect_technology(pdf, mock_client)
+    result = detect_technology(mock_client, "test.pdf", file_ref="dummy_ref")
     assert result == expected
 
 
-def test_detect_technology_exception_returns_desconocido(mock_client, tmp_path):
-    pdf = tmp_path / "test.pdf"
-    pdf.write_bytes(b"%PDF-1.4")
+def test_detect_technology_images(mock_client):
+    mock_client.generate_from_images.return_value = "Eólica"
+    result = detect_technology(mock_client, "test.pdf", images=[b"dummy_image"])
+    assert result == "Eólica"
+    mock_client.generate_from_images.assert_called_once()
+
+
+def test_detect_technology_exception_returns_desconocido(mock_client):
     mock_client.generate.side_effect = Exception("API error")
-    result = detect_technology(pdf, mock_client)
+    result = detect_technology(mock_client, "test.pdf", file_ref="dummy_ref")
     assert result == "Desconocido"
 
 
-def test_detect_technology_cleanup_on_success(mock_client, tmp_path):
-    """Verifica que delete_file se llama siempre, incluso si generate tiene éxito."""
-    pdf = tmp_path / "test.pdf"
-    pdf.write_bytes(b"%PDF-1.4")
-    mock_client.generate.return_value = "Eólica"
-    detect_technology(pdf, mock_client)
-    mock_client.delete_file.assert_called_once()
-
-
-def test_detect_technology_cleanup_on_generate_error(mock_client, tmp_path):
-    """Verifica que delete_file se llama incluso si generate falla."""
-    pdf = tmp_path / "test.pdf"
-    pdf.write_bytes(b"%PDF-1.4")
-    mock_client.generate.side_effect = RuntimeError("Gemini error")
-    detect_technology(pdf, mock_client)
-    mock_client.delete_file.assert_called_once()
+def test_detect_technology_missing_args(mock_client):
+    result = detect_technology(mock_client, "test.pdf")
+    assert result == "Desconocido"
 
 
 def test_tech_values_completeness():

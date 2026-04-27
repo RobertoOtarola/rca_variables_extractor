@@ -84,8 +84,8 @@ class Project(Base):
     sombra_parpadeante_efecto_disco = Column(String)
     mortalidad_aves_murcielagos_total_ind = Column(Integer)
     demanda_energia_acumulada_mj_kwh_1 = Column(Float)
-    potencial_de_acidificacion_g_so2_eq_kwh_1 = Column(Float)
-    potencial_de_eutrofizacion_g_po4_eq_kwh_1 = Column(Float)
+    potencial_de_acidificacion_g_so2_eq_kwh_1 = Column(Float)  # Nota: Unidad g SO₂-eq/kWh (Eólica) - Incompatible directamente con FV
+    potencial_de_eutrofizacion_g_po4_eq_kwh_1 = Column(Float)  # Nota: Unidad g PO₄-eq/kWh (Eólica) - Incompatible directamente con FV
 
     # ── Columnas exclusivas Fotovoltaica ───────────────────────────────────────
     subtipo_tecnologico = Column(String)
@@ -110,13 +110,14 @@ class Project(Base):
     emisiones_particulas_t_ano_1 = Column(Float)
     emisiones_mercurio_g_hg_gwh_1 = Column(Float)
     emisiones_cadmio_g_cd_gwh_1 = Column(Float)
-    potencial_acidificacion_lluvia_acida_g_so2_gwh_1 = Column(Float)
-    potencial_eutrofizacion_g_n_gwh_1 = Column(Float)
+    potencial_acidificacion_lluvia_acida_g_so2_gwh_1 = Column(Float)  # Nota: Unidad g SO₂/GWh (FV) - Incompatible directamente con Eólica
+    potencial_eutrofizacion_g_n_gwh_1 = Column(Float)  # Nota: Unidad g N/GWh (FV) - Incompatible directamente con Eólica
 
     # ── Trazabilidad de detección ─────────────────────────────────────────────
     tecnologia_detectada = Column(String)
 
     # ── Metadatos de pipeline ─────────────────────────────────────────────────
+    prompt_version = Column(String, nullable=True)  # Diferencia datos extraídos con v1 (genérico) vs v2_eolica, v2_fv
     validation_status = Column(String, default="ok")
     outlier_flags = Column(Integer, default=0)  # nº de flags de outlier
     range_flags = Column(Integer, default=0)  # nº de flags fuera de rango

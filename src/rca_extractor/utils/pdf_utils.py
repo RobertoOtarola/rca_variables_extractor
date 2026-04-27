@@ -75,3 +75,30 @@ def detect_scanned(pdf_path: Path) -> bool:
             exc,
         )
         return False
+
+
+def pdf_to_images(pdf_path: Path | str, dpi: int = 150, max_pages: int | None = None) -> list[bytes]:
+    """
+    Convierte un PDF a una lista de imágenes PNG (como bytes).
+    Si max_pages está definido, solo convierte hasta esa cantidad de páginas.
+    """
+    try:
+        import fitz  # pymupdf
+    except ImportError:
+        raise RuntimeError("pymupdf no está instalado. Ejecuta: pip install pymupdf")
+
+    log.debug("Convirtiendo PDF a imágenes: %s (dpi=%d, max_pages=%s)", pdf_path, dpi, max_pages)
+
+    doc = fitz.open(str(pdf_path))
+    images: list[bytes] = []
+    matrix = fitz.Matrix(dpi / 72, dpi / 72)
+    
+    limit = min(len(doc), max_pages) if max_pages else len(doc)
+
+    for i in range(limit):
+        page = doc[i]
+        pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY)
+        images.append(pix.tobytes("png"))
+
+    doc.close()
+    return images

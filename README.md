@@ -225,6 +225,13 @@ TECH_DETECTION_ENABLED=false rca-extractor --pdf-folder data/raw/scraped ...
 
 `subtipo_tecnologico` · `potencia_pico_mwp` · `numero_modulos_paneles` · `numero_inversores` · `configuracion_seguimiento` · `altura_modulos_sobre_suelo_m` · `irradiacion_ghi_kwh_m2_ano_1` · `transformacion_superficie_km2_gw_1` · `transformacion_superficie_km2_twh_1` · `erosion_suelo_ha` · `calidad_suelo_sqr` · `consumo_agua_limpieza_m3_mwp_ano_1` · `fuente_abastecimiento_hidrico` · `fragmentacion_habitat_ha` · `calidad_habitat_local` · `mortalidad_aves_ind_mw_ano_1` · `mortalidad_fauna_colision_quemadura_ind` · `mortalidad_fauna_balsas_evaporacion_ind` · `aceptacion_social` · `emisiones_particulas_t_ano_1` · `emisiones_mercurio_g_hg_gwh_1` · `emisiones_cadmio_g_cd_gwh_1` · `potencial_acidificacion_lluvia_acida_g_so2_gwh_1` · `potencial_eutrofizacion_g_n_gwh_1`
 
+> [!WARNING]
+> **Limitación de Unidades en ACV (LCA):** Las variables de acidificación y eutrofización no son directamente comparables entre tecnologías sin conversión previa.
+> - **Eólica:** Usa `g SO₂-eq/kWh` (acidificación) y `g PO₄-eq/kWh` (eutrofización).
+> - **Fotovoltaica:** Usa `g SO₂/GWh` (acidificación) y `g N/GWh` (eutrofización).
+> 
+> La base de datos incluye la columna `prompt_version` (ej. `v1_generic`, `v2_eolica`, `v2_fv`) para distinguir el origen de los datos y prevenir cruces sesgados.
+
 ---
 
 ## Scraper SEIA (`tools/rca_scraper.py`)

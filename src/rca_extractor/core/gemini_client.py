@@ -182,34 +182,16 @@ class GeminiClient:
     # ── Generación (PDFs escaneados → imágenes) ───────────────────────────────
 
     def generate_from_images(
-        self, prompt: str, pdf_path: str, retries: int = 8, base_delay: float = 65.0, dpi: int = 150
+        self, prompt: str, images: list[bytes], retries: int = 8, base_delay: float = 65.0
     ) -> str:
         """
-        Convierte el PDF a imágenes PNG con pymupdf y las envía a Gemini.
-        Usado para PDFs escaneados sin capa de texto.
-
-        dpi=150 es suficiente para texto impreso.
-        Subir a dpi=200 si la extracción falla en documentos con texto pequeño.
+        Envía las imágenes (ya extraídas del PDF) a Gemini.
+        Usado para PDFs escaneados sin capa de texto o para detección.
         """
-        try:
-            import fitz  # pymupdf
-        except ImportError:
-            raise RuntimeError("pymupdf no está instalado. Ejecuta: pip install pymupdf")
-
-        log.debug("Convirtiendo PDF a imágenes: %s (dpi=%d)", pdf_path, dpi)
-
-        doc = fitz.open(pdf_path)
-        image_parts: list = []
-        matrix = fitz.Matrix(dpi / 72, dpi / 72)
-
-        for page in doc:
-            pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY)
-            image_parts.append(
-                types.Part.from_bytes(data=pix.tobytes("png"), mime_type="image/png")
-            )
-
-        doc.close()
-        log.debug("PDF convertido: %d páginas → %d imágenes", len(image_parts), len(image_parts))
+        image_parts = [
+            types.Part.from_bytes(data=img, mime_type="image/png") for img in images
+        ]
+        log.debug("Enviando %d imágenes a Gemini", len(image_parts))
 
         gen_config = types.GenerateContentConfig(
             temperature=self.temperature,  # type: ignore
