@@ -52,11 +52,13 @@ def _classify_error(exc_str: str) -> str:
     return "transient"  # default conservador
 
 
-def _compute_wait(kind: str, attempt: int, exc_str: str) -> float:
+def _compute_wait(kind: str, attempt: int, exc_str: str, base_delay: float = 65.0) -> float:
     """Calcula el tiempo de espera con backoff + jitter según el tipo de error."""
     if kind == "quota":
-        wait = min(_QUOTA_MIN_WAIT * (2**attempt), _QUOTA_MAX_WAIT)
+        # Usamos el base_delay (ej. 65s) como piso para 429
+        wait = min(base_delay * (2**attempt), _QUOTA_MAX_WAIT)
     else:
+        # Para 5xx usamos un backoff más corto (piso 2s)
         wait = min(_TRANSIENT_MIN_WAIT * (2**attempt), _TRANSIENT_MAX_WAIT)
 
     # Si la API indica un tiempo concreto, respetarlo (+ 2 s margen)
@@ -165,7 +167,7 @@ class GeminiClient:
                     log.error("Error fatal (sin reintentos): %s", err)
                     raise RuntimeError(f"Error fatal de Gemini: {err}")
 
-                wait = _compute_wait(kind, attempt, exc_str)
+                wait = _compute_wait(kind, attempt, exc_str, base_delay=base_delay)
                 log.warning(
                     "Intento %d/%d fallido [%s]: %s. Reintentando en %.1fs…",
                     attempt + 1,
@@ -224,7 +226,7 @@ class GeminiClient:
                     log.error("Error fatal (sin reintentos): %s", err)
                     raise RuntimeError(f"Error fatal de Gemini: {err}")
 
-                wait = _compute_wait(kind, attempt, exc_str)
+                wait = _compute_wait(kind, attempt, exc_str, base_delay=base_delay)
                 log.warning(
                     "Intento %d/%d fallido [%s]: %s. Reintentando en %.1fs…",
                     attempt + 1,

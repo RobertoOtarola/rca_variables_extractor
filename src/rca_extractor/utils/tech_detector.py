@@ -28,7 +28,9 @@ def detect_technology(
     client: GeminiClient, 
     pdf_name: str, 
     file_ref=None, 
-    images: list[bytes] | None = None
+    images: list[bytes] | None = None,
+    retries: int = 2,
+    base_delay: float = 2.0
 ) -> str:
     """
     Detecta el tipo de tecnología de una RCA antes de la extracción completa.
@@ -41,6 +43,8 @@ def detect_technology(
         pdf_name: Nombre del PDF (para logging).
         file_ref: Referencia del archivo en Gemini (para PDFs con texto).
         images: Lista de imágenes de las primeras páginas (para PDFs escaneados).
+        retries: Número de reintentos para detección.
+        base_delay: Tiempo base de espera para reintentos.
 
     Returns:
         Uno de los valores en TECH_VALUES, o "Desconocido" si no se puede
@@ -50,9 +54,9 @@ def detect_technology(
         prompt = config.TECH_DETECTION_PROMPT.read_text(encoding="utf-8")
         
         if images is not None:
-            response = client.generate_from_images(prompt, images, retries=2, base_delay=2.0)
+            response = client.generate_from_images(prompt, images, retries=retries, base_delay=base_delay)
         elif file_ref is not None:
-            response = client.generate(prompt, file_ref, retries=2, base_delay=2.0)
+            response = client.generate(prompt, file_ref, retries=retries, base_delay=base_delay)
         else:
             raise ValueError("Se debe proveer file_ref o images")
 

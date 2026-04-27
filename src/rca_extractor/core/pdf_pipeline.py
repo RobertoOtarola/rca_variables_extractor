@@ -69,7 +69,13 @@ class RCAExtractor:
             images = pdf_to_images(pdf_path)
 
             if config.TECH_DETECTION_ENABLED:
-                tech = detect_technology(self.client, pdf_path.name, images=images[:3])
+                tech = detect_technology(
+                    self.client, 
+                    pdf_path.name, 
+                    images=images[:3],
+                    retries=self.max_retries,
+                    base_delay=self.retry_base_delay
+                )
                 log.info("[%s] Tecnología detectada: %s", pdf_path.name, tech)
 
             use_specific_prompt = tech != "Desconocido"
@@ -85,7 +91,13 @@ class RCAExtractor:
             file_ref = self.client.upload_pdf(str(pdf_path))
             try:
                 if config.TECH_DETECTION_ENABLED:
-                    tech = detect_technology(self.client, pdf_path.name, file_ref=file_ref)
+                    tech = detect_technology(
+                        self.client, 
+                        pdf_path.name, 
+                        file_ref=file_ref,
+                        retries=self.max_retries,
+                        base_delay=self.retry_base_delay
+                    )
                     log.info("[%s] Tecnología detectada: %s", pdf_path.name, tech)
 
                 use_specific_prompt = tech != "Desconocido"

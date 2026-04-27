@@ -1731,19 +1731,24 @@ source = { editable = "." }
 dependencies = [
     { name = "anyio" },
     { name = "beautifulsoup4" },
+    { name = "cffi" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "google-genai" },
     { name = "json-repair" },
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "plotly" },
+    { name = "pydantic" },
     { name = "pymupdf" },
     { name = "pypdf" },
     { name = "python-dotenv" },
     { name = "requests" },
     { name = "sqlalchemy" },
     { name = "streamlit" },
+    { name = "tenacity" },
     { name = "tqdm" },
+    { name = "typing-extensions" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1766,6 +1771,8 @@ geo = [
 requires-dist = [
     { name = "anyio", specifier = ">=4.0.0" },
     { name = "beautifulsoup4", specifier = ">=4.12.0,<5.0.0" },
+    { name = "cffi", specifier = ">=1.16.0" },
+    { name = "cryptography", specifier = ">=42.0.0" },
     { name = "fastapi", specifier = ">=0.115.0,<1.0.0" },
     { name = "geopandas", marker = "extra == 'geo'", specifier = ">=0.14.0,<1.0.0" },
     { name = "google-genai", specifier = ">=1.0.0,<2.0.0" },
@@ -1775,6 +1782,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.2.0,<3.0.0" },
     { name = "pandas-stubs", marker = "extra == 'dev'", specifier = ">=2.0.0" },
     { name = "plotly", specifier = ">=5.24.0,<6.0.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pymupdf", specifier = ">=1.24.0,<2.0.0" },
     { name = "pypdf", specifier = ">=4.0.0,<5.0.0" },
     { name = "pyproj", marker = "extra == 'geo'", specifier = ">=3.6.0,<4.0.0" },
@@ -1786,8 +1794,10 @@ requires-dist = [
     { name = "shapely", marker = "extra == 'geo'", specifier = ">=2.0.0,<3.0.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0,<3.0.0" },
     { name = "streamlit", specifier = ">=1.40.0,<2.0.0" },
+    { name = "tenacity", specifier = ">=8.0.0" },
     { name = "tqdm", specifier = ">=4.66.0,<5.0.0" },
     { name = "types-requests", marker = "extra == 'dev'", specifier = ">=2.0.0" },
+    { name = "typing-extensions", specifier = ">=4.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0,<1.0.0" },
 ]
 provides-extras = ["geo", "dev"]
