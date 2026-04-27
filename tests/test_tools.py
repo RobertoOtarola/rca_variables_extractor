@@ -36,3 +36,25 @@ def test_list_models_main(mock_client):
     
     # Verify
     mock_client.models.list.assert_called_once()
+
+@patch("rca_extractor.tools.snippet_api_key.client")
+def test_snippet_api_key_error_handling(mock_client):
+    """Verifica que main() maneja errores de API sin explotar."""
+    mock_client.models.get.side_effect = Exception("UNAVAILABLE")
+    
+    # No debería lanzar excepción no capturada si el script tiene un bloque try-except en main
+    # Si no lo tiene, este test fallará y nos dirá que debemos agregarlo.
+    try:
+        snippet_main()
+    except Exception as exc:
+        pytest.fail(f"snippet_api_key.main() lanzó una excepción no capturada: {exc}")
+
+@patch("rca_extractor.tools.list_models.client")
+def test_list_models_error_handling(mock_client):
+    """Verifica que main() maneja errores de API sin explotar."""
+    mock_client.models.list.side_effect = Exception("PERMISSION_DENIED")
+    
+    try:
+        list_models_main()
+    except Exception as exc:
+        pytest.fail(f"list_models.main() lanzó una excepción no capturada: {exc}")

@@ -24,7 +24,8 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 | 🚀 **6 · Scraper refactorizado** | `v0.6.0` | ✅ | BS4, inyección de sesión, checkpoint, logging, streaming |
 | 🔧 **7 · Estabilidad** | `v0.7.0` | ✅ | Thread-safety en CLI, módulos LCA/Dashboard completos, geo opcional |
 | 🎛️ **8 · Dashboard integrado** | `v0.8.0` | ✅ | `app.py` usa componentes `charts.py`/`maps.py`; backup en `--reset` |
-| 🏁 **10 · Prompts específicos + Estabilización** | `v1.0.0` | ✅ | Detección automática de tecnología, prompts eólica/FV, 94 tests, E2E |
+| 🧠 **9 · Prompts específicos** | `v0.9.0` | ✅ | Detección automática de tecnología, prompts eólica/FV, single upload |
+| 🏁 **10 · Estabilización v1.0** | `v1.0.0` | ✅ | Dashboard optimizado, migrate.py, mypy extendido, 103 tests |
 
 > **Corpus procesado:** 430 RCAs · 20.77 GW · 369 proyectos FV · 58 eólicos · 125 PDFs escaneados · 419 georreferenciados.
 
@@ -33,8 +34,9 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 ## Prerrequisitos
 
 - Python ≥ 3.11
-- [uv](https://astral.sh/uv) (recomendado) o pip
-- Para la capa geoespacial: GDAL instalado en el sistema
+- [uv](https://github.com/astral-sh/uv) (recomendado) o pip
+- API Key de Google Gemini ([obtener aquí](https://aistudio.google.com/app/apikey))
+- Para capa geoespacial: GDAL en el sistema (`brew install gdal` / `apt-get install gdal-bin libgdal-dev`)
 
 ---
 
@@ -46,18 +48,11 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 git clone https://github.com/RobertoOtarola/rca_variables_extractor.git
 cd rca_variables_extractor
 
-# Instalar uv si no está disponible
 curl -LsSf https://astral.sh/uv/install.sh | sh
+uv sync --dev                   # instalación base
+uv sync --extra geo --dev       # + capa geoespacial (requiere GDAL)
 
-# Instalación base (reproducible con uv.lock)
-uv sync --dev
-
-# Con capa geoespacial (requiere GDAL en el sistema)
-# macOS:  brew install gdal
-# Ubuntu: sudo apt-get install gdal-bin libgdal-dev
-uv sync --extra geo --dev
-
-cp .env.example .env   # añadir GEMINI_API_KEY
+cp .env.example .env            # añadir GEMINI_API_KEY
 ```
 
 ### Con `pip`
@@ -67,14 +62,20 @@ git clone https://github.com/RobertoOtarola/rca_variables_extractor.git
 cd rca_variables_extractor
 python3 -m venv .venv && source .venv/bin/activate
 
-pip install -e "."           # instalación base (sin capa geoespacial)
-pip install -e ".[geo]"      # con capa geoespacial (requiere GDAL)
-pip install -e ".[dev]"      # herramientas de desarrollo
+pip install -e "."              # instalación base
+pip install -e ".[geo]"         # + capa geoespacial (requiere GDAL)
+pip install -e ".[dev]"         # herramientas de desarrollo
 
-cp .env.example .env   # añadir GEMINI_API_KEY
+cp .env.example .env            # añadir GEMINI_API_KEY
 ```
 
-> **Nota para usuarios con base de datos existente (< v1.0.0):** El schema se extendió de 25 a 63 columnas en `v1.0.0`. Ejecutar `python -m rca_extractor.post_processing.run` sobre una BD existente añadirá las columnas nuevas como `NULL`. Los registros históricos se mantienen con `prompt_version = "v1_generic"`.
+### Migración desde v0.x
+
+Si tienes una base de datos `rca_data.db` creada con versiones anteriores (< v1.0.0), ejecuta el script de migración para añadir las nuevas columnas sin perder registros:
+
+```bash
+python -m rca_extractor.post_processing.migrate --db data/processed/rca_data.db
+```
 
 ---
 
@@ -86,7 +87,7 @@ rca-scraper --input data/expedientes.csv --delay 4.0
 
 # 2. Extraer variables con Gemini 2.5 Flash (detección automática de tecnología)
 rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
-  --workers 2 --cooldown 15 --max-retries 2
+  --workers 2 --cooldown 60 --max-retries 8
 
 # 3. Post-procesar y persistir en BD
 python -m rca_extractor.post_processing.run --input data/processed/results.xlsx
@@ -110,13 +111,13 @@ rca_variables_extractor/
 ├── LICENSE                         # GPL-3.0
 ├── .github/
 │   └── workflows/
-│       └── ci.yml                  # CI: ruff + ruff format + mypy + pytest (con GDAL)
+│       └── ci.yml                  # CI: ruff + mypy (core/ + post_processing/ + lca/) + pytest
 │
 ├── prompts/
 │   ├── extraction_prompt.md            # Fallback genérico (corpus histórico)
 │   ├── extraction_prompt_eolica.md     # 39 variables · Bloques 1-12 (eólica)
 │   ├── extraction_prompt_fv.md         # 49 variables · Bloques 1-12 (FV/CSP)
-│   └── tech_detection_prompt.md        # Detección ultraligera (1-token response)
+│   └── tech_detection_prompt.md        # Detección ultraligera (primeras 3 pág., 1-token response)
 │
 ├── tests/
 │   ├── conftest.py                 # Fixture: GEMINI_API_KEY=dummy
@@ -126,82 +127,86 @@ rca_variables_extractor/
 │   ├── test_output_validator.py    # 18 tests — utils/output_validator
 │   ├── test_prompt_builder.py      # 14 tests — utils/prompt_builder
 │   ├── test_rca_scraper.py         # 6 tests  — tools/rca_scraper
-│   └── test_tech_detector.py       # 8 tests  — utils/tech_detector
-│                                   # Total: 94 tests + 2 skipped (credenciales)
+│   ├── test_tech_detector.py       # 11 tests — utils/tech_detector
+│   └── test_tools.py               # tests  — tools/snippet_api_key, list_models
+│                                   # Total: 103 tests + 2 skipped (requieren credenciales)
 │
 └── src/rca_extractor/
-    ├── cli.py                      # Entrypoint LLM — thread-safe · backup --reset
-    ├── config.py                   # Configuración centralizada (env vars)
+    ├── cli.py                      # Entrypoint LLM — thread-safe · backup --reset · carga condicional
+    ├── config.py                   # GEMINI_MODEL, TECH_DETECTION_ENABLED, rutas de prompts
     │
     ├── core/
-    │   ├── gemini_client.py        # Cliente Gemini 2.5 Flash + backoff + retry
-    │   └── pdf_pipeline.py         # Detect tech → seleccionar prompt → extraer
+    │   ├── gemini_client.py        # Cliente Gemini 2.5 Flash + backoff + timeout 120s
+    │   └── pdf_pipeline.py         # Single upload → detect → prompt específico → generate → delete
     │
     ├── utils/
     │   ├── checkpoint.py           # Checkpoint/resume para procesos batch
     │   ├── logger.py               # Logging rotativo estructurado
-    │   ├── output_validator.py     # Superset de claves: COMMON ∪ EOLICA ∪ FV
-    │   ├── pdf_utils.py            # Detección de PDFs escaneados
+    │   ├── output_validator.py     # Superset COMMON ∪ EOLICA ∪ FV + parse_json_response()
+    │   ├── pdf_utils.py            # Detección de PDFs escaneados (< 50 chars/pág)
     │   ├── prompt_builder.py       # get_prompt_for_technology() + routing table
-    │   └── tech_detector.py        # detect_technology() — detección ultraligera
+    │   └── tech_detector.py        # detect_technology(file_ref | images) — 1-token response
     │
-    ├── config/
-    │   └── seia-variables.xlsx         # (Deprecado) Definición legacy de variables. Use los prompts en su lugar.
     ├── tools/
-    │   ├── check_gitignore.py      # Verifica que archivos locales estén bien ignorados
+    │   ├── check_gitignore.py      # Verifica archivos ignorados por Git
     │   ├── check_pdfs.py           # Auditoría del corpus: corruptos, cifrados, escaneados
-    │   ├── list_models.py          # Lista los modelos Gemini disponibles para la API Key
+    │   ├── list_models.py          # Lista los modelos Gemini disponibles
     │   ├── rca_scraper.py          # Scraper SEIA: RCA + ICE (PDF/XML)
-    │   └── snippet_api_key.py      # Verifica conexión con Gemini y modelo activo
+    │   └── snippet_api_key.py      # Verifica conexión Gemini y modelo activo
     │
     ├── post_processing/
-    │   ├── db_storage.py           # ORM SQLAlchemy — 63 columnas (25 comunes + 14 eólica + 24 FV)
-    │   ├── normalizer.py           # Strings → valores tipados (formato numérico chileno)
+    │   ├── db_storage.py           # ORM SQLAlchemy — 64 columnas (63 + prompt_version)
+    │   ├── migrate.py              # Migración v0.x → v1.0.0 (añade columnas nullable)
+    │   ├── normalizer.py           # Strings → valores tipados + mapeo tipo_de_generacion
     │   ├── run.py                  # CLI: python -m rca_extractor.post_processing.run
-    │   └── validator.py            # Rangos científicos + detección de outliers
+    │   └── validator.py            # Rangos científicos + 14 RangeRule nuevas (eólica + FV)
     │
-    ├── geo/                        # Requiere pip install -e ".[geo]" + GDAL del sistema
+    ├── geo/                        # Extra opcional: pip install -e ".[geo]" + GDAL
     │   ├── coord_parser.py         # UTM multi-formato → WGS84
-    │   └── spatial_analysis.py     # Intersección con áreas protegidas SNASPE
+    │   └── spatial_analysis.py     # Intersección SNASPE (v2024, BCN Chile)
     │
     ├── lca/
     │   ├── benchmarks.py           # classify_ghg/water/land/project() (IPCC/NREL/Ong)
     │   ├── calculator.py           # compute_lca() → LCAResult(ghg, water, energy)
-    │   └── factors.py              # Factores de referencia por tecnología
+    │   └── factors.py              # Factores IPCC/NREL/IEA por tecnología
     │
     ├── api/
-    │   └── main.py                 # FastAPI: /health /stats /projects /lca
+    │   └── main.py                 # FastAPI: /health /stats /projects /lca (paginación O(N) — ver deuda)
     │
     └── dashboard/
-        ├── app.py                  # Streamlit — usa componentes charts.py y maps.py
+        ├── app.py                  # Streamlit — delega a charts.py y maps.py; single DB read
         └── components/
             ├── __init__.py
             ├── charts.py           # render_histogram / render_scatter / render_box_plot
             └── maps.py             # render_project_map (scatter_mapbox centrado en Chile)
 ```
 
+> **Nota:** `data/config/seia-variables.xlsx` está **deprecado**. La definición de variables reside ahora en los prompts `.md` de `prompts/`. El XLSX se mantiene solo como referencia científica (papers + criterios SEA).
+
 ---
 
 ## Detección Automática de Tecnología (v1.0.0)
 
-Desde `v1.0.0`, el extractor detecta automáticamente la tecnología de cada RCA con un prompt ultraligero de respuesta única, realiza una sola subida del archivo y enruta al prompt específico correspondiente.
+El extractor detecta la tecnología de cada RCA con un prompt ultraligero (primeras 3 páginas, respuesta de 1 token). Usa el mismo `file_ref` para detección y extracción — **una sola subida por PDF**.
 
 ```
 PDF
- ↓ upload_pdf()  ─────────────────────────────── (1 sola subida)
- ↓ detect_tech()  →  "Eólica" / "Fotovoltaica" / "CSP" / "Desconocido"
+ ↓ upload_pdf()  ──────────────────────────────────── (1 sola subida)
+ ├── PDF escaneado → pdf_to_images() → primeras 3 → detect
+ └── PDF nativo   → file_ref → detect
+ ↓ detect_technology()  →  "Eólica" / "Fotovoltaica" / "CSP" / "Desconocido"
  ↓ get_prompt_for_technology()
  ├── Eólica          → extraction_prompt_eolica.md  (39 variables)
  ├── Fotovoltaica    → extraction_prompt_fv.md      (49 variables)
  ├── CSP             → extraction_prompt_fv.md      (49 variables)
- ├── Eólica+FV       → extraction_prompt_eolica.md  (39 variables)
+ ├── Eólica + FV     → extraction_prompt_eolica.md  (39 variables)
  └── Desconocido     → extraction_prompt.md         (fallback genérico)
- ↓ generate(prompt, file_ref)
- ↓ delete_file()  ─────────────────────────────── (1 sola eliminación)
-JSON estructurado → output_validator → results.xlsx
+ ↓ generate(prompt, file_ref | all_images)
+ ↓ delete_file()  ──────────────────────────────────── (1 sola eliminación)
+JSON → parse_json_response() → validate_output() → results.xlsx
 ```
 
-Para desactivar la detección automática y usar el prompt genérico para todos los documentos:
+Para desactivar la detección y usar el prompt genérico:
 
 ```bash
 TECH_DETECTION_ENABLED=false rca-extractor --pdf-folder data/raw/scraped ...
@@ -211,15 +216,15 @@ TECH_DETECTION_ENABLED=false rca-extractor --pdf-folder data/raw/scraped ...
 
 ## Variables Extraídas (v1.0.0)
 
-### Variables compartidas (25) — presentes en todos los prompts
+### Variables compartidas — presentes en todos los prompts
 
-| Variable | Cobertura | Formato |
-|----------|-----------|---------|
+| Variable | Cobertura v1 | Formato |
+|----------|-------------|---------|
 | `potencia_nominal_bruta_mw` | 98.8% | Float (MW) |
 | `superficie_total_intervenida_ha` | 98.8% | Float (ha) |
 | `intensidad_de_uso_de_suelo_ha_mw_1` | 97.7% | Float (ha/MW) |
 | `vida_util_anos` | 98.4% | Float (años) |
-| `tipo_de_generacion` | 99.8% | `"Fotovoltaica"` / `"Eólica"` / `"CSP"` |
+| `tipo_de_generacion_eolica_fv_csp` | 99.8% | `"Fotovoltaica"` / `"Eólica"` / `"CSP"` |
 | `factor_de_planta` | 26.3% ⚠️ | Float 0–1 |
 | `emisiones_mp10_t_ano_1` | 80.9% | Float (t/año) |
 | `emisiones_mp2_5_t_ano_1` | 68.1% | Float (t/año) |
@@ -231,9 +236,6 @@ TECH_DETECTION_ENABLED=false rca-extractor --pdf-folder data/raw/scraped ...
 | `uso_de_suelo_previo` | 100% | Texto descriptivo |
 | `escaneado` | 100% | `"sí"` / `"no"` |
 | `prompt_version` | 100% | `"v1_generic"` / `"v2_eolica"` / `"v2_fv"` |
-| *(+9 variables de impacto ambiental y paisaje)* | | |
-
-> Las variables con cobertura < 30% están en revisión. Se espera mejora significativa con los prompts específicos por tecnología.
 
 ### Variables exclusivas de Eólica (14)
 
@@ -243,12 +245,11 @@ TECH_DETECTION_ENABLED=false rca-extractor --pdf-folder data/raw/scraped ...
 
 `subtipo_tecnologico` · `potencia_pico_mwp` · `numero_modulos_paneles` · `numero_inversores` · `configuracion_seguimiento` · `altura_modulos_sobre_suelo_m` · `irradiacion_ghi_kwh_m2_ano_1` · `transformacion_superficie_km2_gw_1` · `transformacion_superficie_km2_twh_1` · `erosion_suelo_ha` · `calidad_suelo_sqr` · `consumo_agua_limpieza_m3_mwp_ano_1` · `fuente_abastecimiento_hidrico` · `fragmentacion_habitat_ha` · `calidad_habitat_local` · `mortalidad_aves_ind_mw_ano_1` · `mortalidad_fauna_colision_quemadura_ind` · `mortalidad_fauna_balsas_evaporacion_ind` · `aceptacion_social` · `emisiones_particulas_t_ano_1` · `emisiones_mercurio_g_hg_gwh_1` · `emisiones_cadmio_g_cd_gwh_1` · `potencial_acidificacion_lluvia_acida_g_so2_gwh_1` · `potencial_eutrofizacion_g_n_gwh_1`
 
-> [!WARNING]
 > **Limitación de unidades en ACV:** Las variables de acidificación y eutrofización no son directamente comparables entre tecnologías sin conversión previa.
-> - **Eólica:** `g SO₂-eq/kWh` (acidificación) · `g PO₄-eq/kWh` (eutrofización).
-> - **Fotovoltaica:** `g SO₂/GWh` (acidificación) · `g N/GWh` (eutrofización).
+> - **Eólica:** `g SO₂-eq/kWh` (acidificación) · `g PO₄-eq/kWh` (eutrofización)
+> - **Fotovoltaica:** `g SO₂/GWh` (acidificación) · `g N/GWh` (eutrofización)
 >
-> Usar la columna `prompt_version` para distinguir el origen de los datos y evitar cruces sesgados entre tecnologías.
+> Usar `prompt_version` para distinguir el origen de los datos y evitar cruces sesgados entre tecnologías.
 
 ---
 
@@ -266,7 +267,7 @@ rca-scraper --input data/expedientes.csv --delay 4.0 --ice    # Lote (columna: i
 | `SCRAPER_DELAY` | `3.0` | Segundos base entre requests (+ jitter ±0.5–1.5s) |
 | `SCRAPER_CHECKPOINT` | `checkpoints/scraper_checkpoint.json` | Archivo de checkpoint |
 
-El scraper implementa tres niveles de fallback para cada documento: descarga directa de PDF → visor intermedio → descarga XML. Usa un `User-Agent` institucional identificable (`CEDEUS UC`) y respeta el portal con `delay ≥ 3s`.
+El scraper implementa tres niveles de fallback: descarga directa PDF → visor intermedio → XML. Usa User-Agent institucional (`CEDEUS UC`) y `delay ≥ 3s`.
 
 ---
 
@@ -275,22 +276,52 @@ El scraper implementa tres niveles de fallback para cada documento: descarga dir
 ```bash
 # Estrategia de 2 pasadas (recomendada para lotes grandes)
 rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
-  --workers 2 --cooldown 15 --max-retries 2   # Pasada 1 — falla rápido
+  --workers 2 --cooldown 60 --max-retries 8
 
+# Segunda pasada — solo los fallidos (checkpoint omite los exitosos)
 rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
-  --workers 2 --cooldown 15 --max-retries 5   # Pasada 2 — solo fallidos, más paciencia
+  --workers 2 --cooldown 60 --max-retries 8
 ```
 
 | Opción | Default | Descripción |
 |--------|---------|-------------|
 | `--pdf-folder` | `rcas/` | Carpeta con PDFs de entrada |
 | `--output` | `rca_results.xlsx` | Archivo Excel de salida |
-| `--workers` | `1` | Paralelismo — thread-safe desde `v0.7.0` |
+| `--workers` | `1` | Paralelismo — thread-safe desde v0.7.0 |
 | `--model` | `gemini-2.5-flash` | Modelo Gemini (ID explícito, no aliases) |
-| `--cooldown` | `15` | Segundos entre PDFs (≥ 60 en free tier) |
+| `--cooldown` | `15` | Segundos entre PDFs (≥ 60 recomendado con 503s frecuentes) |
 | `--max-retries` | `8` | Reintentos por PDF |
 | `--reset` | `False` | Ignora checkpoint — crea backup `.bak` automático |
 | `--dry-run` | `False` | Lista PDFs pendientes sin procesar |
+
+> El log correcto al iniciar debe mostrar: `[INFO] Modo prompt específico: variables embebidas en los MD`
+
+---
+
+## Módulos LCA
+
+```python
+from rca_extractor.lca.benchmarks import classify_project, classify_ghg, classify_water, classify_land
+from rca_extractor.lca.calculator import compute_lca
+
+result = classify_project(row)                # BenchmarkResult(ghg, water, land)
+label  = classify_ghg("Fotovoltaica", 35.0)  # → "NORMAL"
+lca    = compute_lca(project_row)             # LCAResult(ghg, water, energy)
+```
+
+---
+
+## Módulos Dashboard
+
+```python
+from rca_extractor.dashboard.components.charts import render_histogram, render_scatter, render_box_plot
+from rca_extractor.dashboard.components.maps import render_project_map
+
+fig = render_histogram(df, column="potencia_nominal_bruta_mw")
+fig = render_scatter(df, x="potencia_nominal_bruta_mw", y="intensidad_de_uso_de_suelo_ha_mw_1")
+fig = render_box_plot(df, x="tipo_de_generacion_eolica_fv_csp", y="factor_de_planta")
+fig = render_project_map(df)   # scatter_mapbox centrado en Chile
+```
 
 ---
 
@@ -308,19 +339,19 @@ python src/rca_extractor/tools/check_gitignore.py    # Verificar .gitignore
 ## Calidad y Tests
 
 ```bash
-# Con uv (recomendado)
+# Makefile (recomendado)
+make check   # ruff + mypy + pytest
+
+# Con uv
 uv run pytest tests/
 uv run ruff check src/
-uv run mypy src/rca_extractor/core/
+uv run mypy src/rca_extractor/core/ src/rca_extractor/post_processing/ src/rca_extractor/lca/
 
 # Con pip
 PYTHONPATH=src pytest tests/ --cov=rca_extractor --cov-report=term-missing
-
-# Makefile
-make check   # ruff + mypy + pytest
 ```
 
-**Estado actual (v1.0.0):** 94 tests (92 passed · 2 skipped por credenciales) · `ruff` ✅ · `mypy` ✅
+**Estado actual (v1.0.0):** 103 tests (101 passed · 2 skipped) · `ruff` ✅ · `mypy` ✅ (14 source files)
 
 ---
 
@@ -330,10 +361,10 @@ make check   # ruff + mypy + pytest
 # Requerida
 GEMINI_API_KEY="tu_api_key_aqui"
 
-# Modelo Gemini — ID explícito (los aliases no son determinísticos)
+# Modelo — ID explícito (los aliases no son determinísticos)
 # GEMINI_MODEL=gemini-2.5-flash
 
-# Detección de tecnología (default: true). Desactivar para usar prompt genérico.
+# Detección de tecnología (default: true)
 # TECH_DETECTION_ENABLED=true
 
 # Retries y delays
@@ -367,8 +398,6 @@ GEMINI_API_KEY="tu_api_key_aqui"
 | Proyectos georreferenciados | 419 (97.4%) |
 | Región con mayor capacidad | Antofagasta — 8,329 MW |
 
-### Indicadores técnicos por tecnología
-
 | Variable | Eólica (mediana) | Fotovoltaica (mediana) |
 |----------|-----------------|----------------------|
 | Factor de planta | 0.328 | 0.266 |
@@ -379,13 +408,14 @@ GEMINI_API_KEY="tu_api_key_aqui"
 
 ## Limitaciones Conocidas
 
-- `factor_de_planta` (26.3% cobertura) y `consumo_de_agua_dulce` (21.9%) tienen baja cobertura porque no siempre figuran en las RCAs. Se espera mejora con los prompts específicos por tecnología.
-- Las variables de ACV (acidificación, eutrofización) usan unidades distintas entre tecnologías. No comparar directamente sin conversión previa. Ver columna `prompt_version`.
-- La capa geoespacial (`geo/`) requiere GDAL instalado en el sistema. Sin GDAL, todas las demás funcionalidades operan normalmente.
-- El dashboard y la API REST no implementan autenticación. Uso previsto en entornos de investigación locales.
+- `factor_de_planta` (26.3%) y `consumo_de_agua_dulce` (21.9%) tienen baja cobertura; se espera mejora con los prompts específicos por tecnología en el próximo reprocesamiento.
+- Variables de ACV (acidificación, eutrofización) usan unidades distintas entre tecnologías — no comparar directamente. Usar `prompt_version` para distinguir el origen.
+- La capa geoespacial (`geo/`) requiere GDAL en el sistema. Sin GDAL, todas las demás funcionalidades operan normalmente.
+- El dashboard y la API REST no implementan autenticación — uso previsto en entornos de investigación locales.
+- La paginación en `api/main.py` es O(N) — suficiente para el corpus actual (430 registros), pero requiere refactorización para escalar.
 
 ---
 
 ## Licencia
 
-[GPL-3.0](LICENSE) — Roberto Otárola Estrada · CEDEUS UC · 2026
+[GPL-3.0](LICENSE) — Roberto Otárola · CEDEUS UC · 2026
