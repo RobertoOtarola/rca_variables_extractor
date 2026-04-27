@@ -5,7 +5,7 @@
 Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos escaneados— y extrae datos estructurados en JSON. El pipeline cubre adquisición de documentos, extracción LLM, post-procesamiento, georreferenciación, análisis de ciclo de vida y visualización interactiva.
 
 **Versión Actual:** `v0.9.0`  
-**Última Actualización:** 11 de abril de 2026
+**Última Actualización:** 26 de abril de 2026
 
 [![CI](https://github.com/RobertoOtarola/rca_variables_extractor/actions/workflows/ci.yml/badge.svg)](https://github.com/RobertoOtarola/rca_variables_extractor/actions)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
@@ -37,7 +37,7 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 ## ✨ Características Principales
 
 - **Web Scraper Integrado:** Descarga automática de RCAs e ICEs desde `seia.sea.gob.cl`.
-- **Extracción NLP Avanzada:** Uso de **Gemini 2.5 Flash** para extraer más de 15 variables críticas de los expedientes.
+- **Extracción NLP Avanzada:** Uso de **Gemini 2.5 Flash** con prompts específicos por tecnología (Eólica: 39 variables, Fotovoltaica: 49 variables) y detección automática de tecnología.
 - **Detección Automática:** Validación rigurosa de documentos (PDFs nativos, escaneados, cifrados, corruptos).
 - **Procesamiento Geoespacial:** Parseo de coordenadas UTM a WGS84, e intersección con áreas protegidas.
 - **Análisis de Ciclo de Vida (LCA):** Clasificación según estándares IPCC/NREL y estimación de impactos ambientales.
@@ -60,7 +60,7 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 | 🚀 **6 · Scraper refactor**| ✅ | BS4, sesión, checkpoint, logging, streaming |
 | 🔧 **7 · Estabilidad** | ✅ | Thread-safety, módulos completos, geo opcional |
 | 🎛️ **8 · Integración** | ✅ | Gráficos reactivos, mapas, backup en `--reset` |
-| 🚀 **9 · Versión 0.9.0** | ✅ | Optimización general, documentación mejorada y dependencias estables. |
+| 🚀 **9 · Prompts específicos** | ✅ | Detección automática de tecnología + prompts Eólica/FV |
 
 ---
 
@@ -132,8 +132,8 @@ rca_variables_extractor/
 ├── .env.example                    # Template de variables de entorno
 ├── LICENSE                         # GPL-3.0
 ├── .github/workflows/ci.yml        # CI test workflow con ruff, mypy, pytest
-├── prompts/                        # Templates de prompts para Gemini
-├── tests/                          # 76 tests automatizados 
+├── prompts/                        # Prompts específicos por tecnología + detección
+├── tests/                          # 101 tests automatizados 
 └── src/rca_extractor/
     ├── api/                        # FastAPI REST API Router
     ├── core/                       # Integración principal Gemini y Pipeline
@@ -158,7 +158,11 @@ rca-scraper --input data/expedientes.csv --delay 4.0 --ice    # Procesamiento po
 ```
 
 ### Extractor LLM (`cli.py`)
-Procesamiento asíncrono robusto multi-threading de APIs.
+Pipeline de extracción en dos fases con detección automática de tecnología:
+1. **Fase 1 — Detección:** Prompt ultraligero clasifica la RCA (Eólica, Fotovoltaica, CSP, híbrida).
+2. **Fase 2 — Extracción:** Prompt específico extrae 39 variables (Eólica) o 49 variables (Fotovoltaica).
+
+Si la detección falla, se usa el prompt genérico como fallback.
 ```bash
 rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
   --workers 2 --cooldown 15 --max-retries 5
@@ -199,7 +203,7 @@ uv run pytest tests/
 uv run ruff check src/
 uv run mypy src/rca_extractor/core/
 ```
-*(Estado Actual: 76 tests passing · 2 skipped · `ruff` ✅ · `mypy` ✅)*
+*(Estado Actual: 101 tests passing · 2 skipped · `ruff` ✅ · `mypy` ✅)*
 
 ---
 
@@ -216,13 +220,16 @@ GEMINI_MODEL="gemini-2.5-flash"
 MAX_RETRIES="8"
 RETRY_BASE_DELAY="65.0"
 INTER_PDF_COOLDOWN="15"
+
+# Detección de Tecnología (desactivar para usar prompt genérico)
+# TECH_DETECTION_ENABLED=false
 ```
 
 ---
 
 ## 📊 Resultados Extras y Corpus
 
-**Variables Extraídas:** Procesamiento exhaustivo de más de 15 variables críticas como potencia generada, cobertura vegetal, consumos hidroeléctricos, coordenadas geográficas, y más. Las tasas promedias de éxito en lecturas superan el **97%**.
+**Variables Extraídas:** Procesamiento exhaustivo con prompts específicos por tecnología — **39 variables** para proyectos eólicos y **49 variables** para fotovoltaicos (25 compartidas). Las tasas promedias de éxito en lecturas superan el **97%**.
 
 | Indicador | Valor |
 |-----------|-------|
@@ -250,4 +257,4 @@ INTER_PDF_COOLDOWN="15"
 ## 📄 Licencia
 
 Este proyecto se distribuye bajo licencia [GPL-3.0](LICENSE).  
-Desarrollado y mantenido por **Roberto Otárola** · **CEDEUS** · 2026
+Desarrollado y mantenido por **Roberto Otárola** · **CEDEUS UC** · 2026
