@@ -28,9 +28,9 @@ _FATAL_CODES = {
 
 # Tiempos de espera
 _QUOTA_MIN_WAIT = 65.0  # piso para 429
-_QUOTA_MAX_WAIT = 300.0  # techo: 5 minutos
-_TRANSIENT_MIN_WAIT = 5.0  # piso para 5xx (subido de 2s para dar más aire)
-_TRANSIENT_MAX_WAIT = 60.0  # techo: 1 minuto
+_QUOTA_MAX_WAIT = 600.0  # techo: 10 minutos
+_TRANSIENT_MIN_WAIT = 30.0  # piso para 5xx (subido para dar más aire)
+_TRANSIENT_MAX_WAIT = 300.0  # techo: 5 minutos
 
 
 def _classify_error(exc_str: str) -> str:
@@ -80,7 +80,10 @@ def _short_err(exc_str: str) -> str:
 
 class GeminiClient:
     def __init__(self, api_key: str, model: str, temperature: float = 0):
-        self.client = genai.Client(api_key=api_key)
+        self.client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=120000)  # 120s en ms
+        )
         self.model_name = model
         self.temperature = temperature
         log.debug("GeminiClient inicializado con modelo: %s", model)
@@ -131,7 +134,6 @@ class GeminiClient:
         gen_config = types.GenerateContentConfig(
             temperature=self.temperature,  # type: ignore
             response_mime_type="text/plain",  # type: ignore
-            http_options={"timeout": 120000},  # 120 segundos en ms
         )
 
         if not file_ref.uri:
@@ -199,7 +201,6 @@ class GeminiClient:
         gen_config = types.GenerateContentConfig(
             temperature=self.temperature,  # type: ignore
             response_mime_type="text/plain",  # type: ignore
-            http_options={"timeout": 120000},  # 120 segundos en ms
         )
 
         contents_list: list[types.Part | str] = [*image_parts, prompt]
