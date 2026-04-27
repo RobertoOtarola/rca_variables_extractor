@@ -93,30 +93,6 @@ def compute_lca(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-@st.cache_data
-def load_geo() -> pd.DataFrame:
-    """Carga proyectos con georreferenciación desde la BD."""
-    try:
-        # Buscamos proyectos en la tabla que tengan coordenadas cargadas
-        # El pipeline de geo debe haber llenado lon/lat en la tabla 'projects'
-        df = pd.read_sql("SELECT * FROM projects", engine)
-        
-        # Filtramos los que tengan lat/lon (asumiendo que existen las columnas)
-        if "lat" not in df.columns:
-             # Si no hay columnas en BD, intentamos leer el Excel legacy por ahora
-             # o simplemente devolvemos vacío si queremos ser puristas con la BD.
-             return pd.DataFrame()
-
-        gdf = df.dropna(subset=["lat", "lon"])
-        gdf["tech"] = gdf["tipo_de_generacion_eolica_fv_csp"].astype(str).replace({
-            "Eólica + Fotovoltaica": "Eólica+FV",
-            "Fotovoltaica + CSP": "FV+CSP",
-            "Fotovoltaica": "FV",
-        })
-        return gdf
-    except Exception as exc:
-        log.warning("load_geo: %s", exc)
-        return pd.DataFrame()
 
 
 @st.cache_data
@@ -396,17 +372,20 @@ def render_lca(df: pd.DataFrame):
 # ── Mapa ───────────────────────────────────────────────────────────────────────
 
 
-def render_map(geo_df: pd.DataFrame):
+def render_map(df: pd.DataFrame):
     st.subheader("🗺️ Mapa de proyectos georreferenciados")
 
-    if geo_df.empty:
-        st.info("No se encontraron datos geoespaciales. Ejecuta `python -m geo.run` para generar coordenadas WGS84.")
+    if df.empty:
+        st.info("No hay datos de proyectos cargados.")
         return
-    if "lat" not in geo_df.columns:
-        st.warning("La tabla de proyectos no contiene columnas `lat`/`lon`. Verifica que el pipeline geoespacial se haya ejecutado correctamente.")
+    if "lat" not in df.columns or "lon" not in df.columns:
+        st.error("Columnas `lat`/`lon` no encontradas en la BD. Ejecuta `python -m rca_extractor.geo.run` para generar coordenadas WGS84.")
         return
 
-    map_df = geo_df.dropna(subset=["lat", "lon"]).copy()
+    map_df = df.dropna(subset=["lat", "lon"]).copy()
+    if map_df.empty:
+        st.info("Ningún proyecto de la selección tiene coordenadas válidas.")
+        return
 
     fig = render_project_map(
         map_df,
@@ -425,7 +404,7 @@ def render_map(geo_df: pd.DataFrame):
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    n_total = len(geo_df)
+    n_total = len(df)
     n_mapped = len(map_df)
     pct = n_mapped / n_total * 100 if n_total > 0 else 0
     st.caption(
@@ -484,7 +463,6 @@ def main():
         return
 
     df = compute_lca(df)
-    geo_df = load_geo()
     sel_tech, sel_reg, sel_mw = render_sidebar(df)
     df_f = apply_filters(df, sel_tech, sel_reg, sel_mw)
 
@@ -510,7 +488,7 @@ def main():
     render_lca(df_f)
 
     st.divider()
-    render_map(geo_df)
+    render_map(df_f)
 
     st.divider()
     render_table(df_f)

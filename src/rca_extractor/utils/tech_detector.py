@@ -9,7 +9,6 @@ de la extracción completa. Esto permite seleccionar el prompt específico
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from rca_extractor.core.gemini_client import GeminiClient
 from rca_extractor import config

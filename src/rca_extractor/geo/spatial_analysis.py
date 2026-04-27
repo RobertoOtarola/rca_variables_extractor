@@ -139,6 +139,12 @@ def build_geodataframe(df: pd.DataFrame) -> gpd.GeoDataFrame:
 
 
 def load_protected_areas(shapefile_path: str | Path) -> gpd.GeoDataFrame:
+    """
+    Carga shapefile de áreas protegidas (ej. SNASPE).
+    Nota de Versión (CB-02): Asegurarse de documentar la versión o fecha de descarga
+    del shapefile en el nombre del archivo (ej. `SNASPE_2023_WGS84.shp`) ya que 
+    CONAF actualiza regularmente los linderos.
+    """
     path = Path(shapefile_path)
     if not path.exists():
         raise FileNotFoundError(

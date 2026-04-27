@@ -126,6 +126,10 @@ def normalize(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = _to_numeric(df[col])
 
     # 2. Estandarizar tipo de generación
+    # Alias para retrocompatibilidad con prompts específicos
+    if "tipo_de_generacion" in df.columns and "tipo_de_generacion_eolica_fv_csp" not in df.columns:
+        df["tipo_de_generacion_eolica_fv_csp"] = df.pop("tipo_de_generacion")
+
     if "tipo_de_generacion_eolica_fv_csp" in df.columns:
         df["tipo_de_generacion_eolica_fv_csp"] = _normalize_tech(
             df["tipo_de_generacion_eolica_fv_csp"]
@@ -149,7 +153,7 @@ def normalize(df: pd.DataFrame) -> pd.DataFrame:
         df.loc[mask, "intensidad_de_uso_de_suelo_ha_mw_1"] = (
             df.loc[mask, "superficie_total_intervenida_ha"]
             / df.loc[mask, "potencia_nominal_bruta_mw"]
-        ).round(4)
+        ).round(4)  # type: ignore
         n_derived = mask.sum()
         if n_derived:
             log.info("Intensidad uso suelo derivada en %d registros.", n_derived)

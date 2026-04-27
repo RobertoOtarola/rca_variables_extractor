@@ -145,6 +145,9 @@ def list_projects(
         query = query.filter(Project.escaneado == escaneado)
 
     total = query.count()
+    # Deuda Técnica (CQ-06): Paginación O(N) (Offset limit).
+    # Con corpus de > 10,000 registros, el `offset` escala linealmente.
+    # A futuro, reemplazar con keyset pagination (ej. `archivo > last_id`).
     items = query.offset((page - 1) * size).limit(size).all()
 
     return {

@@ -31,7 +31,7 @@ jobs:
         run: uv run ruff format --check src/
 
       - name: Type check
-        run: uv run mypy src/rca_extractor/core/
+        run: uv run mypy src/rca_extractor/core/ src/rca_extractor/post_processing/ src/rca_extractor/lca/
 
       - name: Run Tests
         run: uv run pytest tests/
