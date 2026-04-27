@@ -29,7 +29,7 @@ _FATAL_CODES = {
 # Tiempos de espera
 _QUOTA_MIN_WAIT = 65.0  # piso para 429
 _QUOTA_MAX_WAIT = 300.0  # techo: 5 minutos
-_TRANSIENT_MIN_WAIT = 2.0  # piso para 5xx
+_TRANSIENT_MIN_WAIT = 5.0  # piso para 5xx (subido de 2s para dar más aire)
 _TRANSIENT_MAX_WAIT = 60.0  # techo: 1 minuto
 
 
@@ -131,6 +131,7 @@ class GeminiClient:
         gen_config = types.GenerateContentConfig(
             temperature=self.temperature,  # type: ignore
             response_mime_type="text/plain",  # type: ignore
+            http_options={"timeout": 120000},  # 120 segundos en ms
         )
 
         if not file_ref.uri:
@@ -198,6 +199,7 @@ class GeminiClient:
         gen_config = types.GenerateContentConfig(
             temperature=self.temperature,  # type: ignore
             response_mime_type="text/plain",  # type: ignore
+            http_options={"timeout": 120000},  # 120 segundos en ms
         )
 
         contents_list: list[types.Part | str] = [*image_parts, prompt]
