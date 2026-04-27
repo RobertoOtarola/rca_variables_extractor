@@ -184,3 +184,23 @@ def validate_output(data: dict) -> dict:
         cleaned.setdefault(key, "N/A")
     return cleaned
 
+
+def parse_json_response(raw_text: str) -> dict:
+    """
+    Parsea y valida el JSON de respuesta de Gemini usando prompts específicos.
+    Es un wrapper simplificado que usa extract_json_block + _try_parse + repair + validate.
+    """
+    block = extract_json_block(raw_text)
+    data = _try_parse(block)
+    if data is None:
+        if _HAS_JSON_REPAIR:
+            try:
+                repaired = repair_json(block, return_objects=True)
+                data = repaired if isinstance(repaired, dict) else {}
+            except Exception:
+                data = {}
+        else:
+            data = {}
+    
+    return validate_output(data)
+

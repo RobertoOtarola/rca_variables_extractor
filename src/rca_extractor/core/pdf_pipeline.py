@@ -14,13 +14,9 @@ import logging
 from pathlib import Path
 
 from rca_extractor.core.gemini_client import GeminiClient
-from rca_extractor.utils.prompt_builder import (
-    build_prompt,
-    expected_keys,
-    get_prompt_for_technology,
-)
-from rca_extractor.utils.output_validator import parse_and_validate, validate_output
-from rca_extractor.utils.pdf_utils import detect_scanned
+from rca_extractor.utils.prompt_builder import get_prompt_for_technology
+from rca_extractor.utils.output_validator import parse_json_response
+from rca_extractor.utils.pdf_utils import detect_scanned, pdf_to_images
 from rca_extractor.utils.tech_detector import detect_technology
 from rca_extractor import config
 
@@ -46,110 +42,74 @@ class RCAExtractor:
     def process_pdf(self, pdf_path: str | Path, variables: list[dict]) -> dict:
         """
         Procesa un PDF y devuelve un dict con las variables extraídas.
-
-        Flujo en dos fases:
-          1. Detecta tecnología (si TECH_DETECTION_ENABLED).
-          2. Extrae variables con el prompt específico o el genérico como fallback.
+        Sigue el flujo de detección de tecnología y uso de prompts específicos.
         """
         pdf_path = Path(pdf_path)
-        log.info("Procesando: %s", pdf_path.name)
+        is_scanned = detect_scanned(pdf_path)
 
-        # ── Flujo Principal (Detección + Extracción) ─────────────────────────
-        tech = "Desconocido"
-        scanned = detect_scanned(pdf_path)
-        use_specific_prompt = False
-
-        if scanned:
-            log.info(
-                "📷 %s detectado como escaneado → procesando por imágenes",
-                pdf_path.name,
-            )
-            from rca_extractor.utils.pdf_utils import pdf_to_images
-            
-            images = pdf_to_images(pdf_path)
-
-            if config.TECH_DETECTION_ENABLED:
-                tech = detect_technology(
-                    self.client, 
-                    pdf_path.name, 
-                    images=images[:3],
-                    retries=self.max_retries,
-                    base_delay=self.retry_base_delay
-                )
-                log.info("[%s] Tecnología detectada: %s", pdf_path.name, tech)
-
-            use_specific_prompt = tech != "Desconocido"
-            prompt = get_prompt_for_technology(tech) if use_specific_prompt else build_prompt(variables, prompt_file=config.PROMPT_FILE)
-
-            raw = self.client.generate_from_images(
-                prompt=prompt,
-                images=images,
-                retries=self.max_retries,
-                base_delay=self.retry_base_delay,
-            )
-        else:
+        # Subir el PDF UNA sola vez (solo si no es escaneado)
+        file_ref = None
+        if not is_scanned:
             file_ref = self.client.upload_pdf(str(pdf_path))
-            try:
-                if config.TECH_DETECTION_ENABLED:
-                    tech = detect_technology(
-                        self.client, 
-                        pdf_path.name, 
-                        file_ref=file_ref,
-                        retries=self.max_retries,
-                        base_delay=self.retry_base_delay
-                    )
-                    log.info("[%s] Tecnología detectada: %s", pdf_path.name, tech)
+        
+        try:
+            # Fase 1: detectar tecnología
+            tech = self._detect_tech(file_ref, pdf_path, is_scanned)
+            log.info("[%s] Tecnología detectada: %s", pdf_path.name, tech)
 
-                use_specific_prompt = tech != "Desconocido"
-                prompt = get_prompt_for_technology(tech) if use_specific_prompt else build_prompt(variables, prompt_file=config.PROMPT_FILE)
+            # Fase 2: prompt específico — NO inyectar variables externas
+            prompt = get_prompt_for_technology(tech)
+            # ↑ el prompt ya contiene el JSON de salida y todas las reglas
 
-                raw = self.client.generate(
+            if is_scanned:
+                response = self._extract_from_images(pdf_path, prompt)
+            else:
+                assert file_ref is not None
+                response = self.client.generate(
                     prompt=prompt,
                     file_ref=file_ref,
                     retries=self.max_retries,
                     base_delay=self.retry_base_delay,
                 )
-            finally:
+        finally:
+            if file_ref:
                 self.client.delete_file(file_ref)
 
-        # ── Validación ───────────────────────────────────────────────────────
-        if use_specific_prompt:
-            # Prompt específico: parsear JSON y validar con superset de claves
-            from rca_extractor.utils.output_validator import extract_json_block, _try_parse
-
-            block = extract_json_block(raw)
-            data = _try_parse(block)
-            if data is None:
-                try:
-                    from json_repair import repair_json
-
-                    repaired = repair_json(block, return_objects=True)
-                    data = repaired if isinstance(repaired, dict) else {}
-                except Exception:
-                    data = {}
-            data = validate_output(data)
-        else:
-            # Fallback genérico: usar parse_and_validate con claves del Excel
-            keys = expected_keys(variables)
-            data = parse_and_validate(raw, keys)
-
+        data = parse_json_response(response)
         data["archivo"] = pdf_path.name
-        data["escaneado"] = "sí" if scanned else "no"
+        data["escaneado"] = "sí" if is_scanned else "no"
         data["tecnologia_detectada"] = tech
         
-        # Guardar la versión del prompt utilizado (útil para migración de corpus)
-        if use_specific_prompt:
-            tech_key = tech.lower().replace(" ", "_").replace("+", "y")
-            data["prompt_version"] = f"v2_{tech_key}"
-        else:
-            data["prompt_version"] = "v1_generic"
-
-        n_vars = len(data) - 4  # excluir metadatos internos
-        log.info(
-            "✓ %s → %d variables extraídas [%s]%s",
-            pdf_path.name,
-            n_vars,
-            tech,
-            " [escaneado]" if scanned else "",
-        )
+        # Metadata de versionado
+        tech_key = tech.lower().replace(" ", "_").replace("+", "y")
+        data["prompt_version"] = f"v2_{tech_key}" if tech != "Desconocido" else "v1_generic"
+        
         return data
+
+    def _detect_tech(self, file_ref, pdf_path: Path, is_scanned: bool) -> str:
+        """Helper para detección de tecnología."""
+        if not config.TECH_DETECTION_ENABLED:
+            return "Desconocido"
+            
+        images = None
+        if is_scanned:
+            images = pdf_to_images(pdf_path)[:3]  # solo primeras 3 paginas para detección
+            
+        return detect_technology(
+            self.client,
+            pdf_path.name,
+            file_ref=file_ref,
+            images=images,
+            retries=self.max_retries,
+            base_delay=self.retry_base_delay
+        )
+
+    def _extract_from_images(self, pdf_path: Path, prompt: str) -> str:
+        """Helper para extracción desde imágenes (PDFs escaneados)."""
+        images = pdf_to_images(pdf_path)
+        return self.client.generate_from_images(
+            prompt=prompt,
+            images=images,
+            retries=self.max_retries,
+            base_delay=self.retry_base_delay,
+        )

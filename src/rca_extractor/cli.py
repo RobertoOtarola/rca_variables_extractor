@@ -134,11 +134,15 @@ def main() -> int:
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     # 1. Cargar variables
-    try:
-        variables = load_variables(args.variables, config.VARIABLES_COLUMN)
-    except (FileNotFoundError, ValueError) as exc:
-        log.error("Error cargando variables: %s", exc)
-        return 1
+    if config.TECH_DETECTION_ENABLED:
+        variables = []
+        log.info("Modo prompt específico: variables embebidas en los MD")
+    else:
+        try:
+            variables = load_variables(args.variables, config.VARIABLES_COLUMN)
+        except (FileNotFoundError, ValueError) as exc:
+            log.error("Error cargando variables: %s", exc)
+            return 1
 
     # 2. Enumerar PDFs
     pdfs = sorted(pdf_folder.glob("*.pdf"))
