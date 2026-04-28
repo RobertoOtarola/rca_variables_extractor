@@ -112,6 +112,9 @@ def _process_one(
     try:
         data = extractor.process_pdf(pdf, variables)
         return pdf.name, data, None
+    except KeyboardInterrupt:
+        # Propagar interrupción del usuario para un cierre limpio
+        raise
     except (httpx.TimeoutException, httpx.NetworkError) as exc:
         log.error("❌ %s: timeout de red no recuperado: %s", pdf.name, exc)
         return pdf.name, None, f"Network timeout: {exc}"
@@ -247,79 +250,88 @@ def main() -> int:
     # Registrar flush al salir para no perder progreso ante crash
     atexit.register(_flush)
 
-    if args.workers == 1:
-        # Modo secuencial con barra de progreso
-        with _make_bar(pending, len(pdfs)) as bar:
-            for idx, pdf in enumerate(pending):
-                bar.set_description(f"Extrayendo RCA {bar.n + 1}/{len(pdfs)} — {pdf.name}")
-                name, data, err = _process_one(extractor, pdf, variables)
+    try:
+        if args.workers == 1:
+            # Modo secuencial con barra de progreso
+            with _make_bar(pending, len(pdfs)) as bar:
+                for idx, pdf in enumerate(pending):
+                    bar.set_description(f"Extrayendo RCA {bar.n + 1}/{len(pdfs)} — {pdf.name}")
+                    name, data, err = _process_one(extractor, pdf, variables)
 
-                if data:
-                    results.append(data)
-                    checkpoint.mark_ok(name)
-                    stats["ok"] += 1
-                    consecutive_network_errors = 0
-                    _flush()
-                else:
-                    log.error("❌ %s: %s", name, err)
-                    checkpoint.mark_error(name, err or "desconocido")
-                    stats["error"] += 1
-                    
-                    if err and "timeout" in err.lower():
-                        consecutive_network_errors += 1
-                        if consecutive_network_errors >= NETWORK_FAIL_THRESHOLD:
-                            log.warning("⚠️ %d errores de red consecutivos. Circuit breaker: pausando %ds...", 
-                                        consecutive_network_errors, CIRCUIT_BREAK_WAIT)
-                            time.sleep(CIRCUIT_BREAK_WAIT)
-                            consecutive_network_errors = 0
-                    else:
-                        consecutive_network_errors = 0
-
-                bar.set_postfix(ok=stats["ok"], error=stats["error"], refresh=False)
-                bar.update(1)
-
-                # Cooldown entre PDFs (no después del último)
-                if args.cooldown > 0 and idx < len(pending) - 1:
-                    bar.set_description(f"Cooldown {args.cooldown}s…")
-                    time.sleep(args.cooldown)
-
-    else:
-        # Modo concurrente con barra de progreso
-        log.info("Procesando con %d workers en paralelo.", args.workers)
-        with _make_bar(pending, len(pdfs)) as bar:
-            with ThreadPoolExecutor(max_workers=args.workers) as pool:
-                futures = {
-                    pool.submit(_process_one, extractor, pdf, variables): pdf for pdf in pending
-                }
-                for future in as_completed(futures):
-                    name, data, err = future.result()
                     if data:
-                        with write_lock:
-                            results.append(data)
-                            checkpoint.mark_ok(name)
-                            stats["ok"] += 1
-                            consecutive_network_errors = 0
-                            _flush()
+                        results.append(data)
+                        checkpoint.mark_ok(name)
+                        stats["ok"] += 1
+                        consecutive_network_errors = 0
+                        _flush()
                     else:
-                        with write_lock:
-                            log.error("❌ %s: %s", name, err)
-                            checkpoint.mark_error(name, err or "desconocido")
-                            stats["error"] += 1
-                            
-                            if err and "timeout" in err.lower():
-                                consecutive_network_errors += 1
-                                if consecutive_network_errors >= NETWORK_FAIL_THRESHOLD:
-                                    log.warning("⚠️ %d errores de red consecutivos. Circuit breaker: pausando %ds...", 
-                                                consecutive_network_errors, CIRCUIT_BREAK_WAIT)
-                                    # En modo paralelo, el sleep bloquea el thread principal que consume los resultados
-                                    # Esto efectivamente pausa el despacho de nuevos trabajos (cuando se liberen los actuales)
-                                    time.sleep(CIRCUIT_BREAK_WAIT)
-                                    consecutive_network_errors = 0
-                            else:
+                        log.error("❌ %s: %s", name, err)
+                        checkpoint.mark_error(name, err or "desconocido")
+                        stats["error"] += 1
+                        
+                        if err and "timeout" in err.lower():
+                            consecutive_network_errors += 1
+                            if consecutive_network_errors >= NETWORK_FAIL_THRESHOLD:
+                                log.warning("⚠️ %d errores de red consecutivos. Circuit breaker: pausando %ds...", 
+                                            consecutive_network_errors, CIRCUIT_BREAK_WAIT)
+                                time.sleep(CIRCUIT_BREAK_WAIT)
                                 consecutive_network_errors = 0
+                        else:
+                            consecutive_network_errors = 0
 
                     bar.set_postfix(ok=stats["ok"], error=stats["error"], refresh=False)
                     bar.update(1)
+
+                    # Cooldown entre PDFs (no después del último)
+                    if args.cooldown > 0 and idx < len(pending) - 1:
+                        bar.set_description(f"Cooldown {args.cooldown}s…")
+                        time.sleep(args.cooldown)
+
+        else:
+            # Modo concurrente con barra de progreso
+            log.info("Procesando con %d workers en paralelo.", args.workers)
+            with _make_bar(pending, len(pdfs)) as bar:
+                with ThreadPoolExecutor(max_workers=args.workers) as pool:
+                    futures = {
+                        pool.submit(_process_one, extractor, pdf, variables): pdf for pdf in pending
+                    }
+                    for future in as_completed(futures):
+                        name, data, err = future.result()
+                        if data:
+                            with write_lock:
+                                results.append(data)
+                                checkpoint.mark_ok(name)
+                                stats["ok"] += 1
+                                consecutive_network_errors = 0
+                                _flush()
+                        else:
+                            with write_lock:
+                                log.error("❌ %s: %s", name, err)
+                                checkpoint.mark_error(name, err or "desconocido")
+                                stats["error"] += 1
+                                
+                                if err and "timeout" in err.lower():
+                                    consecutive_network_errors += 1
+                                    if consecutive_network_errors >= NETWORK_FAIL_THRESHOLD:
+                                        log.warning("⚠️ %d errores de red consecutivos. Circuit breaker: pausando %ds...", 
+                                                    consecutive_network_errors, CIRCUIT_BREAK_WAIT)
+                                        # En modo paralelo, el sleep bloquea el thread principal que consume los resultados
+                                        time.sleep(CIRCUIT_BREAK_WAIT)
+                                        consecutive_network_errors = 0
+                                else:
+                                    consecutive_network_errors = 0
+
+                        bar.set_postfix(ok=stats["ok"], error=stats["error"], refresh=False)
+                        bar.update(1)
+
+    except KeyboardInterrupt:
+        log.warning("⚠️ Interrupción por el usuario (Ctrl+C). Guardando progreso...")
+    finally:
+        # Asegurar flush final si hay resultados pendientes
+        if results:
+            log.info("Finalizando guardado de %d resultados...", len(results))
+            _flush()
+        log.info("Proceso detenido. Checkpoint actualizado.")
 
     # 6. Resumen
     elapsed = time.time() - t0
