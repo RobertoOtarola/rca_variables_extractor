@@ -83,12 +83,15 @@ def _short_err(exc_str: str) -> str:
 
 class GeminiClient:
     def __init__(self, api_key: str, model: str, temperature: float = 0, max_backoff: float = 300.0):
+        # Configuración de red robusta: timeout de 60s y desactivar retries internos
+        # para que nuestra lógica de backoff tenga el control total.
+        self.http_options = types.HttpOptions(
+            timeout=60,
+            retry_options=types.HttpRetryOptions(attempts=1)
+        )
         self.client = genai.Client(
             api_key=api_key,
-            http_options=types.HttpOptions(
-                timeout=60,  # 60s por request
-                retry_options=types.HttpRetryOptions(attempts=1)  # Desactivar retries internos del SDK
-            )
+            http_options=self.http_options
         )
         self.model_name = model
         self.temperature = temperature
@@ -147,9 +150,11 @@ class GeminiClient:
 
     def generate(self, prompt: str, file_ref: types.File, retries: int = 8, base_delay: float = 65.0) -> str:
         """Envía el prompt + archivo a Gemini con captura de timeouts de red."""
+        # Timeout explícito por request para evitar cuelgues de 2 horas
         gen_config = types.GenerateContentConfig(
             temperature=self.temperature,  # type: ignore
             response_mime_type="text/plain",  # type: ignore
+            http_options=types.HttpOptions(timeout=180)  # 3 min por request
         )
 
         if not file_ref.uri:
@@ -213,9 +218,11 @@ class GeminiClient:
         image_parts = [
             types.Part.from_bytes(data=img, mime_type="image/png") for img in images
         ]
+        # Timeout explícito por request para evitar cuelgues de 2 horas
         gen_config = types.GenerateContentConfig(
             temperature=self.temperature,  # type: ignore
             response_mime_type="text/plain",  # type: ignore
+            http_options=types.HttpOptions(timeout=180)  # 3 min por request
         )
         contents_list: list[types.Part | str] = [*image_parts, prompt]
 

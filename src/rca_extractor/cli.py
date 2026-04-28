@@ -29,6 +29,10 @@ from rca_extractor.utils.prompt_builder import load_variables
 # ── Logger global ─────────────────────────────────────────────────────────────
 log = get_logger(log_file=config.LOG_FILE)
 
+# ── Configuración Circuit Breaker ─────────────────────────────────────────────
+NETWORK_FAIL_THRESHOLD = 5    # pausar tras 5 errores consecutivos de red
+CIRCUIT_BREAK_WAIT = 300      # esperar 5 min antes de reintentar
+
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -226,6 +230,7 @@ def main() -> int:
     t0 = time.time()
     
     write_lock = threading.Lock()
+    consecutive_network_errors = 0
 
     def _flush() -> None:
         """Guarda el Excel de forma progresiva. Usado también en atexit."""
@@ -253,11 +258,22 @@ def main() -> int:
                     results.append(data)
                     checkpoint.mark_ok(name)
                     stats["ok"] += 1
+                    consecutive_network_errors = 0
                     _flush()
                 else:
                     log.error("❌ %s: %s", name, err)
                     checkpoint.mark_error(name, err or "desconocido")
                     stats["error"] += 1
+                    
+                    if err and "timeout" in err.lower():
+                        consecutive_network_errors += 1
+                        if consecutive_network_errors >= NETWORK_FAIL_THRESHOLD:
+                            log.warning("⚠️ %d errores de red consecutivos. Circuit breaker: pausando %ds...", 
+                                        consecutive_network_errors, CIRCUIT_BREAK_WAIT)
+                            time.sleep(CIRCUIT_BREAK_WAIT)
+                            consecutive_network_errors = 0
+                    else:
+                        consecutive_network_errors = 0
 
                 bar.set_postfix(ok=stats["ok"], error=stats["error"], refresh=False)
                 bar.update(1)
@@ -282,12 +298,25 @@ def main() -> int:
                             results.append(data)
                             checkpoint.mark_ok(name)
                             stats["ok"] += 1
+                            consecutive_network_errors = 0
                             _flush()
                     else:
                         with write_lock:
                             log.error("❌ %s: %s", name, err)
                             checkpoint.mark_error(name, err or "desconocido")
                             stats["error"] += 1
+                            
+                            if err and "timeout" in err.lower():
+                                consecutive_network_errors += 1
+                                if consecutive_network_errors >= NETWORK_FAIL_THRESHOLD:
+                                    log.warning("⚠️ %d errores de red consecutivos. Circuit breaker: pausando %ds...", 
+                                                consecutive_network_errors, CIRCUIT_BREAK_WAIT)
+                                    # En modo paralelo, el sleep bloquea el thread principal que consume los resultados
+                                    # Esto efectivamente pausa el despacho de nuevos trabajos (cuando se liberen los actuales)
+                                    time.sleep(CIRCUIT_BREAK_WAIT)
+                                    consecutive_network_errors = 0
+                            else:
+                                consecutive_network_errors = 0
 
                     bar.set_postfix(ok=stats["ok"], error=stats["error"], refresh=False)
                     bar.update(1)
