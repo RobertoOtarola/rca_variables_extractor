@@ -84,7 +84,7 @@ class GeminiClient:
     def __init__(self, api_key: str, model: str, temperature: float = 0, max_backoff: float = 300.0):
         self.client = genai.Client(
             api_key=api_key,
-            http_options=types.HttpOptions(timeout=300)  # 300s (5 minutos)
+            http_options=types.HttpOptions(timeout=600.0)  # 600s (10 minutos)
         )
         self.model_name = model
         self.temperature = temperature
