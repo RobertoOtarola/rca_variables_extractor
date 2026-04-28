@@ -136,7 +136,7 @@ rca_variables_extractor/
     ├── config.py                   # GEMINI_MODEL, TECH_DETECTION_ENABLED, rutas de prompts
     │
     ├── core/
-    │   ├── gemini_client.py        # Cliente Gemini 2.5 Flash + backoff + timeout 120s
+    │   ├── gemini_client.py        # Cliente Gemini 2.5 Flash + backoff + timeout 300s
     │   └── pdf_pipeline.py         # Single upload → detect → prompt específico → generate → delete
     │
     ├── utils/
@@ -275,12 +275,13 @@ El scraper implementa tres niveles de fallback: descarga directa PDF → visor i
 
 ```bash
 # Estrategia de 2 pasadas (recomendada para lotes grandes)
+# Pasada 1: Rápida, falla pronto ante saturación
 rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
-  --workers 2 --cooldown 60 --max-retries 8
+  --workers 1 --cooldown 30 --max-retries 2 --max-backoff 120 --reset
 
-# Segunda pasada — solo los fallidos (checkpoint omite los exitosos)
+# Pasada 2: Exhaustiva, solo procesa fallidos
 rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx \
-  --workers 2 --cooldown 60 --max-retries 8
+  --workers 1 --cooldown 90 --max-retries 8 --max-backoff 300
 ```
 
 | Opción | Default | Descripción |
@@ -291,6 +292,7 @@ rca-extractor --pdf-folder data/raw/scraped --output data/processed/results.xlsx
 | `--model` | `gemini-2.5-flash` | Modelo Gemini (ID explícito, no aliases) |
 | `--cooldown` | `15` | Segundos entre PDFs (≥ 60 recomendado con 503s frecuentes) |
 | `--max-retries` | `8` | Reintentos por PDF |
+| `--max-backoff` | `300` | Tiempo máximo de espera (s) entre reintentos |
 | `--reset` | `False` | Ignora checkpoint — crea backup `.bak` automático |
 | `--dry-run` | `False` | Lista PDFs pendientes sin procesar |
 
