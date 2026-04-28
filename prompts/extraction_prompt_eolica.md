@@ -95,7 +95,7 @@ Número en años con punto decimal. Convierte meses a fracción de año (1 mes =
 - ✅ `"20"` / `"31.75"` / `"30.83"` → ❌ `"31 años 9 meses"` / `"30 años y 10 meses"`
 
 ### factor_de_planta
-Número entre 0 y 1 con punto decimal. Convierte porcentaje dividiendo por 100. Buscar: "factor de planta", "factor de capacidad", "capacity factor".
+Número entre 0 y 1 con punto decimal. Convierte porcentaje dividiendo por 100. Buscar: "factor de planta", "factor de capacidad", "capacity factor", "eficiencia de generación", "rendimiento neto", "generación neta anual estimada". Suele estar en la sección de "Descripción del Proyecto" o "Justificación de Localización".
 - ✅ `"0.2695"` / `"0.24"` → ❌ `"26.95%"` / `"24 %"`
 
 ---
