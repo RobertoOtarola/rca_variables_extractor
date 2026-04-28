@@ -31,6 +31,7 @@ class RCAExtractor:
         max_retries: int | None = None,
         retry_base_delay: float | None = None,
         max_backoff: float | None = None,
+        detect_retries: int = 3,
     ) -> None:
         self.client = GeminiClient(
             api_key=config.GEMINI_API_KEY,
@@ -40,6 +41,7 @@ class RCAExtractor:
         )
         self.max_retries = max_retries or config.MAX_RETRIES
         self.retry_base_delay = retry_base_delay or config.RETRY_BASE_DELAY
+        self.detect_retries = detect_retries
 
     def process_pdf(self, pdf_path: str | Path, variables: list[dict]) -> dict:
         """
@@ -102,7 +104,7 @@ class RCAExtractor:
             pdf_path.name,
             file_ref=file_ref,
             images=images,
-            retries=self.max_retries,
+            retries=self.detect_retries,
             base_delay=self.retry_base_delay
         )
 

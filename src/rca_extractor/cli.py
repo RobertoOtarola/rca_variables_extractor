@@ -12,6 +12,8 @@ import argparse
 import sys
 import time
 import threading
+import atexit
+import httpx
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -69,6 +71,12 @@ def parse_args() -> argparse.Namespace:
         help="Reintentos por PDF ante errores de API (default: %(default)s)",
     )
     p.add_argument(
+        "--detect-retries",
+        type=int,
+        default=3,
+        help="Reintentos para la detección de tecnología (default: 3)",
+    )
+    p.add_argument(
         "--cooldown",
         type=int,
         default=config.INTER_PDF_COOLDOWN,
@@ -100,7 +108,11 @@ def _process_one(
     try:
         data = extractor.process_pdf(pdf, variables)
         return pdf.name, data, None
+    except (httpx.TimeoutException, httpx.NetworkError) as exc:
+        log.error("❌ %s: timeout de red no recuperado: %s", pdf.name, exc)
+        return pdf.name, None, f"Network timeout: {exc}"
     except Exception as exc:
+        log.error("❌ %s: error inesperado: %s", pdf.name, exc)
         return pdf.name, None, str(exc)
 
 
@@ -204,7 +216,10 @@ def main() -> int:
 
     # 5. Extraer
     extractor = RCAExtractor(
-        model=args.model, max_retries=args.max_retries, max_backoff=args.max_backoff
+        model=args.model, 
+        max_retries=args.max_retries, 
+        max_backoff=args.max_backoff,
+        detect_retries=args.detect_retries
     )
     results: list[dict] = list(existing_results)
     stats = {"ok": 0, "error": 0}
@@ -212,11 +227,20 @@ def main() -> int:
     
     write_lock = threading.Lock()
 
-    def _flush(results: list[dict]) -> None:
-        """Guarda el Excel de forma progresiva."""
-        df = pd.DataFrame(results)
-        cols = ["archivo"] + [c for c in df.columns if c != "archivo"]
-        df[cols].to_excel(output_file, index=False)
+    def _flush() -> None:
+        """Guarda el Excel de forma progresiva. Usado también en atexit."""
+        if not results:
+            return
+        with write_lock:
+            df = pd.DataFrame(results)
+            if "archivo" in df.columns:
+                cols = ["archivo"] + [c for c in df.columns if c != "archivo"]
+                df[cols].to_excel(output_file, index=False)
+            else:
+                df.to_excel(output_file, index=False)
+
+    # Registrar flush al salir para no perder progreso ante crash
+    atexit.register(_flush)
 
     if args.workers == 1:
         # Modo secuencial con barra de progreso
@@ -229,7 +253,7 @@ def main() -> int:
                     results.append(data)
                     checkpoint.mark_ok(name)
                     stats["ok"] += 1
-                    _flush(results)
+                    _flush()
                 else:
                     log.error("❌ %s: %s", name, err)
                     checkpoint.mark_error(name, err or "desconocido")
@@ -258,7 +282,7 @@ def main() -> int:
                             results.append(data)
                             checkpoint.mark_ok(name)
                             stats["ok"] += 1
-                            _flush(results)
+                            _flush()
                     else:
                         with write_lock:
                             log.error("❌ %s: %s", name, err)
