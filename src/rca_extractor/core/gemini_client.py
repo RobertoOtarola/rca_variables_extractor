@@ -87,7 +87,7 @@ class GeminiClient:
             api_key=api_key,
             http_options=types.HttpOptions(
                 timeout=60,  # 60s por request
-                retry_options=types.HttpRetryOptions(max_attempts=1)  # Desactivar retries internos del SDK
+                retry_options=types.HttpRetryOptions(attempts=1)  # Desactivar retries internos del SDK
             )
         )
         self.model_name = model
