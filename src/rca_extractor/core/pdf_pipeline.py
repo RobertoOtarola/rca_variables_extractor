@@ -30,11 +30,13 @@ class RCAExtractor:
         temperature: float | None = None,
         max_retries: int | None = None,
         retry_base_delay: float | None = None,
+        max_backoff: float | None = None,
     ) -> None:
         self.client = GeminiClient(
             api_key=config.GEMINI_API_KEY,
             model=model or config.GEMINI_MODEL,
             temperature=temperature if temperature is not None else config.TEMPERATURE,
+            max_backoff=max_backoff or config.MAX_BACKOFF,
         )
         self.max_retries = max_retries or config.MAX_RETRIES
         self.retry_base_delay = retry_base_delay or config.RETRY_BASE_DELAY

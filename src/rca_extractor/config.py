@@ -27,6 +27,7 @@ RETRY_BASE_DELAY: float = float(
     os.getenv("RETRY_BASE_DELAY", "65.0")
 )  # segundos — piso para 429 free tier
 INTER_PDF_COOLDOWN: int = int(os.getenv("INTER_PDF_COOLDOWN", "15"))  # segundos entre PDFs
+MAX_BACKOFF: float = float(os.getenv("MAX_BACKOFF", "300.0"))  # techo reintentos
 
 # ── Rutas ────────────────────────────────────────────────────────────────────
 PROJECT_ROOT: Path = Path(__file__).parent.parent.parent

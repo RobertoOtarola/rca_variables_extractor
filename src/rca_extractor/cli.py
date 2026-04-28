@@ -79,6 +79,12 @@ def parse_args() -> argparse.Namespace:
         "--reset", action="store_true", help="Ignora el checkpoint y reprocesa todos los PDFs"
     )
     p.add_argument(
+        "--max-backoff",
+        type=float,
+        default=300.0,
+        help="Tiempo máximo de espera en segundos entre reintentos (default: %(default)s)",
+    )
+    p.add_argument(
         "--dry-run", action="store_true", help="Lista los PDFs pendientes sin procesarlos"
     )
     return p.parse_args()
@@ -197,7 +203,9 @@ def main() -> int:
             log.warning("No se pudo leer el archivo de salida existente: %s", exc)
 
     # 5. Extraer
-    extractor = RCAExtractor(model=args.model, max_retries=args.max_retries)
+    extractor = RCAExtractor(
+        model=args.model, max_retries=args.max_retries, max_backoff=args.max_backoff
+    )
     results: list[dict] = list(existing_results)
     stats = {"ok": 0, "error": 0}
     t0 = time.time()

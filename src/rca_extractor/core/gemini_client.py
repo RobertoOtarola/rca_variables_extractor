@@ -52,14 +52,16 @@ def _classify_error(exc_str: str) -> str:
     return "transient"  # default conservador
 
 
-def _compute_wait(kind: str, attempt: int, exc_str: str, base_delay: float = 65.0) -> float:
+def _compute_wait(
+    kind: str, attempt: int, exc_str: str, base_delay: float = 65.0, max_backoff: float = 300.0
+) -> float:
     """Calcula el tiempo de espera con backoff + jitter según el tipo de error."""
     if kind == "quota":
         # Usamos el base_delay (ej. 65s) como piso para 429
-        wait = min(base_delay * (2**attempt), _QUOTA_MAX_WAIT)
+        wait = min(base_delay * (2**attempt), max_backoff)
     else:
-        # Para 5xx usamos un backoff más corto (piso 2s)
-        wait = min(_TRANSIENT_MIN_WAIT * (2**attempt), _TRANSIENT_MAX_WAIT)
+        # Para 5xx usamos un backoff más corto (piso 30s o 60s según la versión)
+        wait = min(_TRANSIENT_MIN_WAIT * (2**attempt), max_backoff)
 
     # Si la API indica un tiempo concreto, respetarlo (+ 2 s margen)
     match = re.search(r"Please retry in (\d+(?:\.\d+)?)s", exc_str)
@@ -79,14 +81,15 @@ def _short_err(exc_str: str) -> str:
 
 
 class GeminiClient:
-    def __init__(self, api_key: str, model: str, temperature: float = 0):
+    def __init__(self, api_key: str, model: str, temperature: float = 0, max_backoff: float = 300.0):
         self.client = genai.Client(
             api_key=api_key,
             http_options=types.HttpOptions(timeout=300000)  # 300s en ms (aumentado de 120s)
         )
         self.model_name = model
         self.temperature = temperature
-        log.debug("GeminiClient inicializado con modelo: %s", model)
+        self.max_backoff = max_backoff
+        log.debug("GeminiClient inicializado con modelo: %s (max_backoff: %.1fs)", model, max_backoff)
 
     # ── File management ───────────────────────────────────────────────────────
 
@@ -170,7 +173,9 @@ class GeminiClient:
                     log.error("Error fatal (sin reintentos): %s", err)
                     raise RuntimeError(f"Error fatal de Gemini: {err}")
 
-                wait = _compute_wait(kind, attempt, exc_str, base_delay=base_delay)
+                wait = _compute_wait(
+                    kind, attempt, exc_str, base_delay=base_delay, max_backoff=self.max_backoff
+                )
                 log.warning(
                     "Intento %d/%d fallido [%s]: %s. Reintentando en %.1fs…",
                     attempt + 1,
@@ -229,7 +234,9 @@ class GeminiClient:
                     log.error("Error fatal (sin reintentos): %s", err)
                     raise RuntimeError(f"Error fatal de Gemini: {err}")
 
-                wait = _compute_wait(kind, attempt, exc_str, base_delay=base_delay)
+                wait = _compute_wait(
+                    kind, attempt, exc_str, base_delay=base_delay, max_backoff=self.max_backoff
+                )
                 log.warning(
                     "Intento %d/%d fallido [%s]: %s. Reintentando en %.1fs…",
                     attempt + 1,
