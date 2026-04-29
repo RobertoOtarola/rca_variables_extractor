@@ -13,9 +13,14 @@ from google.genai import types
 
 log = logging.getLogger("rca_extractor")
 
+# ── Timeouts ─────────────────────────────────────────────────────────────────
+# IMPORTANTE: HttpOptions.timeout en google-genai usa MILISEGUNDOS.
+# 180s = 180,000ms por request (read + connect + write)
+_REQUEST_TIMEOUT_MS = 180_000
+
 # ── Clasificación de errores ──────────────────────────────────────────────────
 _QUOTA_CODES = {"429", "RESOURCE_EXHAUSTED"}
-_TRANSIENT_CODES = {"500", "502", "503", "INTERNAL", "UNAVAILABLE"}
+_TRANSIENT_CODES = {"500", "502", "503", "504", "INTERNAL", "UNAVAILABLE", "DEADLINE_EXCEEDED"}
 _FATAL_CODES = {
     "400",
     "401",
@@ -26,27 +31,41 @@ _FATAL_CODES = {
     "UNAUTHENTICATED",
     "NOT_FOUND",
 }
+# Palabras clave que indican timeout de red (httpx o SDK)
+_NETWORK_TIMEOUT_KEYWORDS = (
+    "timed out",
+    "timeout",
+    "connection reset",
+    "read operation",
+    "write operation",
+    "errno 54",
+    "deadline_exceeded",
+)
 
 # Tiempos de espera
-_QUOTA_MIN_WAIT = 65.0  # piso para 429
-_QUOTA_MAX_WAIT = 600.0  # techo: 10 minutos
-_TRANSIENT_MIN_WAIT = 60.0  # piso para 5xx
-_TRANSIENT_MAX_WAIT = 300.0  # techo: 5 minutos
+_QUOTA_MIN_WAIT = 65.0   # piso para 429
+_NETWORK_TIMEOUT_WAIT = 30.0  # piso para timeouts de red (más agresivo)
+_TRANSIENT_MIN_WAIT = 30.0    # piso para 5xx
 
 
 def _classify_error(exc_str: str) -> str:
     """
     Clasifica el error en:
-      'quota'     → 429 / RESOURCE_EXHAUSTED  (backoff largo)
-      'transient' → 5xx / UNAVAILABLE         (backoff corto)
-      'fatal'     → 400 / 404 / etc.          (falla inmediata)
+      'quota'           → 429 / RESOURCE_EXHAUSTED  (backoff largo ~65s)
+      'network_timeout' → timed out / deadline      (backoff corto ~30s)
+      'transient'       → 5xx / UNAVAILABLE         (backoff corto ~30s)
+      'fatal'           → 400 / 404 / etc.          (falla inmediata)
     """
+    exc_lower = exc_str.lower()
     for code in _QUOTA_CODES:
         if code in exc_str:
             return "quota"
     for code in _FATAL_CODES:
         if code in exc_str:
             return "fatal"
+    for kw in _NETWORK_TIMEOUT_KEYWORDS:
+        if kw in exc_lower:
+            return "network_timeout"
     for code in _TRANSIENT_CODES:
         if code in exc_str:
             return "transient"
@@ -58,14 +77,18 @@ def _compute_wait(
 ) -> float:
     """Calcula el tiempo de espera con backoff + jitter según el tipo de error."""
     if kind == "quota":
-        # Usamos el base_delay (ej. 65s) como piso para 429
+        # Backoff largo: 65s, 130s, 260s... capeado por max_backoff
         wait = min(base_delay * (2**attempt), max_backoff)
+    elif kind == "network_timeout":
+        # Backoff agresivo: 30s, 60s, 120s... los timeouts de red suelen ser momentáneos
+        wait = min(_NETWORK_TIMEOUT_WAIT * (2**attempt), max_backoff)
     else:
-        # Para 5xx o timeouts de red usamos un backoff más corto
+        # Para 5xx o transient
         wait = min(_TRANSIENT_MIN_WAIT * (2**attempt), max_backoff)
 
-    # Si la API indica un tiempo concreto, respetarlo (+ 2 s margen)
-    match = re.search(r"Please retry in (\d+(?:\.\d+)?)s", exc_str)
+    # Si la API indica un tiempo concreto, respetarlo (+ 2s de margen)
+    # Soporta tanto "Please retry in Xs" como "retry after N"
+    match = re.search(r"retry(?:\s+in|\s+after)\s+(\d+(?:\.\d+)?)", exc_str, re.IGNORECASE)
     if match:
         wait = max(wait, float(match.group(1)) + 2.0)
 
@@ -83,20 +106,25 @@ def _short_err(exc_str: str) -> str:
 
 class GeminiClient:
     def __init__(self, api_key: str, model: str, temperature: float = 0, max_backoff: float = 300.0):
-        # Configuración de red robusta. 
-        # IMPORTANTE: HttpOptions.timeout en google-genai se especifica en MILISEGUNDOS.
-        self.http_options = types.HttpOptions(
-            timeout=120000,  # 120s (120,000 ms)
-            retry_options=types.HttpRetryOptions(attempts=1)  # Controlamos nosotros los retries
-        )
+        # Cliente sin timeout global (el timeout se aplica por-request en GenerateContentConfig)
         self.client = genai.Client(
             api_key=api_key,
-            http_options=self.http_options
+            http_options=types.HttpOptions(
+                retry_options=types.HttpRetryOptions(attempts=1)  # Desactivamos retries internos del SDK
+            )
         )
         self.model_name = model
         self.temperature = temperature
         self.max_backoff = max_backoff
         log.debug("GeminiClient inicializado con modelo: %s (max_backoff: %.1fs)", model, max_backoff)
+
+    def _gen_config(self) -> types.GenerateContentConfig:
+        """Config con timeout por-request (180s) y respuesta en texto plano."""
+        return types.GenerateContentConfig(
+            temperature=self.temperature,  # type: ignore
+            response_mime_type="text/plain",  # type: ignore
+            http_options=types.HttpOptions(timeout=_REQUEST_TIMEOUT_MS),
+        )
 
     # ── File management ───────────────────────────────────────────────────────
 
@@ -162,12 +190,7 @@ class GeminiClient:
 
     def generate(self, prompt: str, file_ref: types.File, retries: int = 8, base_delay: float = 65.0) -> str:
         """Envía el prompt + archivo a Gemini con captura de timeouts de red."""
-        # Timeout explícito por request en ms (180s = 180,000 ms)
-        gen_config = types.GenerateContentConfig(
-            temperature=self.temperature,  # type: ignore
-            response_mime_type="text/plain",  # type: ignore
-            http_options=types.HttpOptions(timeout=180000)
-        )
+        gen_config = self._gen_config()
 
         if not file_ref.uri:
             raise RuntimeError("Gemini no devolvió un URI válido.")
@@ -196,7 +219,7 @@ class GeminiClient:
             except KeyboardInterrupt:
                 raise
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
-                wait = _compute_wait("transient", attempt, str(exc), max_backoff=self.max_backoff)
+                wait = _compute_wait("network_timeout", attempt, str(exc), max_backoff=self.max_backoff)
                 log.warning(
                     "Intento %d/%d fallido [network_timeout]: %s. Reintentando en %.1fs…",
                     attempt + 1, retries, exc, wait
@@ -238,12 +261,7 @@ class GeminiClient:
         image_parts = [
             types.Part.from_bytes(data=img, mime_type="image/png") for img in images
         ]
-        # Timeout explícito por request en ms (180s = 180,000 ms)
-        gen_config = types.GenerateContentConfig(
-            temperature=self.temperature,  # type: ignore
-            response_mime_type="text/plain",  # type: ignore
-            http_options=types.HttpOptions(timeout=180000)
-        )
+        gen_config = self._gen_config()
         contents_list: list[types.Part | str] = [*image_parts, prompt]
 
         for attempt in range(retries):
