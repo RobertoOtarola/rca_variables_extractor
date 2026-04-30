@@ -379,4 +379,4 @@ python src/rca_extractor/tools/check_gitignore.py    # Verificar .gitignore
 
 ## Licencia
 
-[GPL-3.0](LICENSE) — Roberto Otárola Estrada · CEDEUS UC · 2026
+[GPL-3.0](LICENSE) — Roberto Otárola · CEDEUS UC · 2026
