@@ -15,8 +15,8 @@ log = logging.getLogger("rca_extractor")
 
 # ── Timeouts ─────────────────────────────────────────────────────────────────
 # IMPORTANTE: HttpOptions.timeout en google-genai usa MILISEGUNDOS.
-# 180s = 180,000ms por request (read + connect + write)
-_REQUEST_TIMEOUT_MS = 180_000
+# 600s = 600,000ms por request (read + connect + write)
+_REQUEST_TIMEOUT_MS = 600_000
 
 # ── Clasificación de errores ──────────────────────────────────────────────────
 _QUOTA_CODES = {"429", "RESOURCE_EXHAUSTED"}
@@ -130,6 +130,7 @@ class GeminiClient:
 
     def upload_pdf(self, path: str, retries: int = 3) -> types.File:
         """Sube el PDF con reintentos propios ante errores de red/API."""
+        last_err_msg = ""
         for attempt in range(retries):
             try:
                 log.debug("Subiendo archivo (intento %d/%d): %s", attempt + 1, retries, path)
@@ -139,7 +140,7 @@ class GeminiClient:
                     raise RuntimeError("Gemini no devolvió un nombre de archivo.")
 
                 # Polling hasta ACTIVE con timeout propio
-                polling_timeout = 180  # 3 minutos máx esperando procesamiento
+                polling_timeout = 600  # 10 minutos máx esperando procesamiento
                 start_polling = time.time()
                 
                 while True:
@@ -159,6 +160,7 @@ class GeminiClient:
                 # No capturar Ctrl+C como error de red
                 raise
             except (httpx.NetworkError, httpx.TimeoutException, Exception) as exc:
+                last_err_msg = str(exc)
                 if attempt == retries - 1:
                     log.error("❌ upload_pdf agotó reintentos: %s", exc)
                     raise
@@ -174,7 +176,7 @@ class GeminiClient:
                 except KeyboardInterrupt:
                     raise
         
-        raise RuntimeError(f"upload_pdf: error fatal al subir {path}")
+        raise RuntimeError(f"upload_pdf: error fatal al subir {path}. Último error: {last_err_msg}")
 
     def delete_file(self, file_ref: types.File) -> None:
         """Elimina el archivo de la Files API. Falla silenciosamente."""
@@ -201,6 +203,7 @@ class GeminiClient:
         )
         contents_list: list[types.Part | str] = [pdf_part, prompt]
 
+        last_err_msg = ""
         for attempt in range(retries):
             try:
                 response = self.client.models.generate_content(
@@ -219,6 +222,7 @@ class GeminiClient:
             except KeyboardInterrupt:
                 raise
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                last_err_msg = str(exc)
                 wait = _compute_wait("network_timeout", attempt, str(exc), max_backoff=self.max_backoff)
                 log.warning(
                     "Intento %d/%d fallido [network_timeout]: %s. Reintentando en %.1fs…",
@@ -232,6 +236,7 @@ class GeminiClient:
 
             except Exception as exc:
                 exc_str = str(exc)
+                last_err_msg = exc_str
                 kind = _classify_error(exc_str)
                 err = _short_err(exc_str)
 
@@ -250,7 +255,7 @@ class GeminiClient:
                     except KeyboardInterrupt:
                         raise
 
-        raise RuntimeError(f"Gemini no respondió después de {retries} intentos.")
+        raise RuntimeError(f"Gemini no respondió después de {retries} intentos. Último error: {last_err_msg}")
 
     # ── Generación (PDFs escaneados → imágenes) ───────────────────────────────
 
@@ -264,6 +269,7 @@ class GeminiClient:
         gen_config = self._gen_config()
         contents_list: list[types.Part | str] = [*image_parts, prompt]
 
+        last_err_msg = ""
         for attempt in range(retries):
             try:
                 response = self.client.models.generate_content(
@@ -282,6 +288,7 @@ class GeminiClient:
             except KeyboardInterrupt:
                 raise
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                last_err_msg = str(exc)
                 wait = _compute_wait("transient", attempt, str(exc), max_backoff=self.max_backoff)
                 log.warning(
                     "Intento %d/%d fallido [network_timeout]: %s. Reintentando en %.1fs…",
@@ -295,6 +302,7 @@ class GeminiClient:
 
             except Exception as exc:
                 exc_str = str(exc)
+                last_err_msg = exc_str
                 kind = _classify_error(exc_str)
                 err = _short_err(exc_str)
 
@@ -313,4 +321,4 @@ class GeminiClient:
                     except KeyboardInterrupt:
                         raise
 
-        raise RuntimeError(f"Gemini no respondió después de {retries} intentos.")
+        raise RuntimeError(f"Gemini no respondió después de {retries} intentos. Último error: {last_err_msg}")

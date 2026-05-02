@@ -77,10 +77,13 @@ python -m rca_extractor.post_processing.migrate --db data/processed/rca_data.db
 ## Uso Rápido
 
 ```bash
+# 0. Verificar API Key y modelo activo
+python src/rca_extractor/tools/snippet_api_key.py
+
 # 1. Descargar RCAs desde el SEIA
 rca-scraper --input data/expedientes.csv --delay 4.0
 
-# 2. Extraer variables (estrategia 2 pasadas recomendada — ver sección CLI)
+# 2. Extraer variables (estrategia 3 pasadas recomendada — ver sección CLI)
 rca-extractor --pdf-folder data/raw/ --output data/processed/results.xlsx \
   --workers 1 --cooldown 30 --max-retries 2 --max-backoff 120 --reset
 
@@ -203,9 +206,12 @@ JSON → parse_json_response() → validate_output() → results.xlsx
 
 ## Extractor LLM (`cli.py`)
 
-### Estrategia de 2 pasadas (recomendada)
+### Estrategia de 3 pasadas (recomendada)
 
 ```bash
+# Paso 0 — Verificar API Key
+python src/rca_extractor/tools/snippet_api_key.py
+
 # Pasada 1 — Rápida, falla pronto ante saturación de API
 rca-extractor \
   --pdf-folder data/raw/ \
@@ -225,7 +231,13 @@ print(f'✅ OK: {ok} | ❌ Fallidos: {err} | ⏳ Pendientes: {432-ok-err}')
 rca-extractor \
   --pdf-folder data/raw/ \
   --output data/processed/results.xlsx \
-  --workers 1 --cooldown 90 --max-retries 8 --max-backoff 300 --detect-retries 6
+  --workers 1 --cooldown 90 --max-retries 4 --max-backoff 300 --detect-retries 6
+
+# Pasada 3 — Rescate final (PDFs muy pesados o alta congestión, usa timeout de 10 min)
+rca-extractor \
+  --pdf-folder data/raw/ \
+  --output data/processed/results.xlsx \
+  --workers 1 --cooldown 120 --max-retries 8 --max-backoff 300 --detect-retries 6
 ```
 
 | Opción | Default | Descripción |

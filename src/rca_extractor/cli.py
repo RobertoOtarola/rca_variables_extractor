@@ -269,7 +269,7 @@ def main() -> int:
                         checkpoint.mark_error(name, err or "desconocido")
                         stats["error"] += 1
                         
-                        if err and "timeout" in err.lower():
+                        if err and any(k in err.lower() for k in ["timeout", "deadline", "network"]):
                             consecutive_network_errors += 1
                             if consecutive_network_errors >= NETWORK_FAIL_THRESHOLD:
                                 log.warning("⚠️ %d errores de red consecutivos. Circuit breaker: pausando %ds...", 
@@ -310,7 +310,7 @@ def main() -> int:
                                 checkpoint.mark_error(name, err or "desconocido")
                                 stats["error"] += 1
                                 
-                                if err and "timeout" in err.lower():
+                                if err and any(k in err.lower() for k in ["timeout", "deadline", "network"]):
                                     consecutive_network_errors += 1
                                     if consecutive_network_errors >= NETWORK_FAIL_THRESHOLD:
                                         log.warning("⚠️ %d errores de red consecutivos. Circuit breaker: pausando %ds...", 
