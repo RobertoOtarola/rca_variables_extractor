@@ -27,6 +27,7 @@ Procesa PDFs nativamente con la API de Google Gemini —incluyendo documentos es
 | 🧠 **9 · Prompts específicos** | `v0.9.0` | ✅ | Detección automática, prompts eólica/FV, single upload |
 | 🏁 **10 · Estabilización** | `v1.0.0` | ✅ | Dashboard optimizado, migrate.py, mypy extendido, 103 tests |
 | 🛡️ **11 · Robustez de red** | `v1.1.0` | ✅ | Retry en upload, captura WriteTimeout, --max-backoff, --detect-retries, atexit |
+| ⚖️ **12 · Paginación y Tests** | `v1.2.0` | ✅ | Keyset Pagination (O(1)), 100% tests en pipeline y API, cleanup de repo |
 
 > **Corpus procesado (prompt genérico):** 430 RCAs · 20.77 GW · 369 FV · 58 eólicos · 125 escaneados · 419 georreferenciados.
 
@@ -101,7 +102,7 @@ streamlit run src/rca_extractor/dashboard/app.py    # Dashboard → http://local
 
 ```
 rca_variables_extractor/
-├── pyproject.toml                  # Dependencias y configuración (v1.1.0)
+├── pyproject.toml                  # Dependencias y configuración (v1.2.0)
 ├── uv.lock                         # Lockfile determinístico
 ├── Makefile                        # make check | make start-api | make scrape
 ├── .env.example                    # Template de variables de entorno
@@ -129,7 +130,7 @@ rca_variables_extractor/
 │   ├── test_rca_scraper.py         # 6 tests  — tools/rca_scraper
 │   ├── test_tech_detector.py       # 11 tests — utils/tech_detector
 │   └── test_tools.py               # tests  — tools/snippet_api_key, list_models
-│                                   # Total: 109 tests + 2 skipped
+│                                   # Total: 116 tests + 2 skipped
 │
 └── src/rca_extractor/
     ├── cli.py                      # Entrypoint LLM — thread-safe · atexit flush · --max-backoff
@@ -285,7 +286,7 @@ uv run pytest tests/ -m "integration"
 PYTHONPATH=src pytest tests/ -m "not integration" --cov=rca_extractor
 ```
 
-**Estado actual (v1.1.0):** 109 tests (107 passed · 2 skipped) · `ruff` ✅ · `mypy` ✅
+**Estado actual (v1.2.0):** 116 tests (114 passed · 2 skipped) · `ruff` ✅ · `mypy` ✅
 
 ---
 
@@ -323,7 +324,7 @@ GEMINI_API_KEY="tu_api_key_aqui"
 
 ---
 
-## Variables Extraídas (v1.1.0)
+## Variables Extraídas (v1.2.0)
 
 ### Compartidas — presentes en todos los prompts
 
@@ -385,7 +386,6 @@ python src/rca_extractor/tools/check_gitignore.py    # Verificar .gitignore
 - Variables de ACV usan unidades distintas entre tecnologías. Usar `prompt_version` para distinguir el origen.
 - La capa geoespacial requiere GDAL en el sistema. Sin GDAL, las demás funcionalidades operan normalmente.
 - El dashboard y la API REST no implementan autenticación — uso previsto en entornos de investigación locales.
-- Paginación en `api/main.py` es O(N) — suficiente para el corpus actual, requiere refactorización a escala.
 
 ---
 
