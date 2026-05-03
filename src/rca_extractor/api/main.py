@@ -13,7 +13,7 @@ Arrancar:
     uvicorn api.main:app --reload --port 8000
 """
 
-import math
+
 from typing import Optional
 
 from sqlalchemy import func
@@ -121,8 +121,8 @@ def regions(db: Session = Depends(get_db)):
 
 @app.get("/projects", tags=["proyectos"])
 def list_projects(
-    page:      int   = Query(1, ge=1),
-    size:      int   = Query(20, ge=1, le=200),
+    limit:     int           = Query(20, ge=1, le=200),
+    last_id:   Optional[str] = Query(None, description="Último 'archivo' de la página anterior para keyset pagination"),
     region:    Optional[str] = None,
     tech:      Optional[str] = None,
     min_mw:    Optional[float] = None,
@@ -130,7 +130,7 @@ def list_projects(
     escaneado: Optional[bool] = None,
     db: Session = Depends(get_db)
 ):
-    """Lista paginada de proyectos con filtros directos de base de datos."""
+    """Lista paginada de proyectos con filtros directos de base de datos usando keyset pagination."""
     query = db.query(Project)
 
     if region:
@@ -145,16 +145,19 @@ def list_projects(
         query = query.filter(Project.escaneado == escaneado)
 
     total = query.count()
-    # Deuda Técnica (CQ-06): Paginación O(N) (Offset limit).
-    # Con corpus de > 10,000 registros, el `offset` escala linealmente.
-    # A futuro, reemplazar con keyset pagination (ej. `archivo > last_id`).
-    items = query.offset((page - 1) * size).limit(size).all()
+    
+    if last_id:
+        query = query.filter(Project.archivo > last_id)
+        
+    query = query.order_by(Project.archivo.asc())
+    items = query.limit(limit).all()
+    
+    next_cursor = items[-1].archivo if items else None
 
     return {
         "total": total,
-        "page":  page,
-        "size":  size,
-        "pages": math.ceil(total / size) if total else 0,
+        "limit": limit,
+        "next_cursor": next_cursor,
         "items": [_project_to_dict(i) for i in items],
     }
 
