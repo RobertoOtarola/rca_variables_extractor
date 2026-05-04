@@ -23,6 +23,9 @@ NUMERIC_COLS: dict[str, str] = {
     "emisiones_mp2_5_t_ano_1": "float64",
     "consumo_de_agua_dulce_m3_mwh_1": "float64",
     "emisiones_gei_embebidas_kg_co2_eq_kwh_1": "float64",
+    "ruido_operacion_db_a": "float64",
+    "efluentes_liquidos_l_dia_1": "float64",
+    "perdida_suelo_m3": "float64",
 }
 
 # ── Columnas numéricas exclusivas por tecnología ─────────────────────────────
